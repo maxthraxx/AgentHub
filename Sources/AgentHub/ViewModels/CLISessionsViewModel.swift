@@ -31,6 +31,17 @@ public final class CLISessionsViewModel {
   public private(set) var loadingState: CLILoadingState = .idle
   public private(set) var error: Error?
 
+  // MARK: - Monitoring State
+
+  /// Set of session IDs currently being monitored
+  public private(set) var monitoredSessionIds: Set<String> = []
+
+  /// Current monitoring states keyed by session ID
+  public private(set) var monitorStates: [String: SessionMonitorState] = [:]
+
+  /// Combine cancellables for monitoring subscriptions (keyed by session ID)
+  private var monitoringCancellables: [String: AnyCancellable] = [:]
+
   /// Whether to show the last message instead of the first message in session rows
   public var showLastMessage: Bool {
     didSet {
@@ -269,5 +280,71 @@ public final class CLISessionsViewModel {
     selectedRepositories.flatMap { repo in
       repo.worktrees.flatMap { $0.sessions }
     }
+  }
+
+  // MARK: - Monitoring Management
+
+  /// Toggle monitoring for a session
+  public func toggleMonitoring(for session: CLISession) {
+    if monitoredSessionIds.contains(session.id) {
+      stopMonitoring(session: session)
+    } else {
+      startMonitoring(session: session)
+    }
+  }
+
+  /// Start monitoring a session
+  public func startMonitoring(session: CLISession) {
+    guard !monitoredSessionIds.contains(session.id) else { return }
+
+    monitoredSessionIds.insert(session.id)
+
+    // Subscribe to state updates
+    let cancellable = fileWatcher.statePublisher
+      .filter { $0.sessionId == session.id }
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] update in
+        self?.monitorStates[session.id] = update.state
+      }
+
+    monitoringCancellables[session.id] = cancellable
+
+    // Start watching
+    Task {
+      await fileWatcher.startMonitoring(
+        sessionId: session.id,
+        projectPath: session.projectPath
+      )
+    }
+  }
+
+  /// Stop monitoring a session
+  public func stopMonitoring(session: CLISession) {
+    stopMonitoring(sessionId: session.id)
+  }
+
+  /// Stop monitoring by session ID
+  public func stopMonitoring(sessionId: String) {
+    monitoredSessionIds.remove(sessionId)
+    monitorStates.removeValue(forKey: sessionId)
+    monitoringCancellables.removeValue(forKey: sessionId)
+
+    Task {
+      await fileWatcher.stopMonitoring(sessionId: sessionId)
+    }
+  }
+
+  /// Check if a session is being monitored
+  public func isMonitoring(sessionId: String) -> Bool {
+    monitoredSessionIds.contains(sessionId)
+  }
+
+  /// Get all currently monitored sessions with their states
+  public var monitoredSessions: [(session: CLISession, state: SessionMonitorState?)] {
+    allSessions
+      .filter { monitoredSessionIds.contains($0.id) }
+      .map { session in
+        (session: session, state: monitorStates[session.id])
+      }
   }
 }

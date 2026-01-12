@@ -7,52 +7,38 @@
 
 import Foundation
 import SwiftUI
-import Combine
 
 // MARK: - CLISessionRow
 
 /// Individual row for displaying a CLI session with connect action
 public struct CLISessionRow: View {
   let session: CLISession
+  let isMonitoring: Bool
   let onConnect: () -> Void
   let onCopyId: () -> Void
-  var fileWatcher: SessionFileWatcher?
+  let onToggleMonitoring: () -> Void
   var showLastMessage: Bool = false
-
-  @State private var isMonitoring = false
-  @State private var monitorState: SessionMonitorState?
-  @State private var cancellables = Set<AnyCancellable>()
 
   public init(
     session: CLISession,
+    isMonitoring: Bool,
     onConnect: @escaping () -> Void,
     onCopyId: @escaping () -> Void,
-    fileWatcher: SessionFileWatcher? = nil,
+    onToggleMonitoring: @escaping () -> Void,
     showLastMessage: Bool = false
   ) {
     self.session = session
+    self.isMonitoring = isMonitoring
     self.onConnect = onConnect
     self.onCopyId = onCopyId
-    self.fileWatcher = fileWatcher
+    self.onToggleMonitoring = onToggleMonitoring
     self.showLastMessage = showLastMessage
   }
 
   public var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      // Main session row
-      sessionRowContent
-
-      // Monitoring panel (shown when monitoring is enabled)
-      if isMonitoring {
-        SessionMonitorPanel(state: monitorState)
-          .padding(.top, 8)
-      }
-    }
-    .padding(.vertical, 6)
-    .padding(.horizontal, 8)
-    .onChange(of: isMonitoring) { _, newValue in
-      handleMonitoringChange(newValue)
-    }
+    sessionRowContent
+      .padding(.vertical, 6)
+      .padding(.horizontal, 8)
   }
 
   // MARK: - Session Row Content
@@ -92,17 +78,8 @@ public struct CLISessionRow: View {
   }
 
   private var statusColor: Color {
-    if isMonitoring, let state = monitorState {
-      switch state.status {
-      case .thinking, .executingTool:
-        return .orange
-      case .awaitingApproval:
-        return .yellow
-      case .waitingForUser:
-        return .green
-      case .idle:
-        return session.isActive ? .green : .gray.opacity(0.5)
-      }
+    if isMonitoring {
+      return .brandPrimary
     }
     return session.isActive ? .green : .gray.opacity(0.5)
   }
@@ -141,6 +118,7 @@ public struct CLISessionRow: View {
             .font(.caption2)
           Text(branch)
             .font(.caption)
+            .lineLimit(1)
         }
         .foregroundColor(session.isWorktree ? .brandSecondary : .secondary)
 
@@ -153,6 +131,7 @@ public struct CLISessionRow: View {
       Text("\(session.messageCount) msgs")
         .font(.caption)
         .foregroundColor(.secondary)
+        .fixedSize()
 
       Text("\u{2022}")
         .font(.caption)
@@ -162,28 +141,21 @@ public struct CLISessionRow: View {
       Text(session.lastActivityAt.timeAgoDisplay())
         .font(.caption)
         .foregroundColor(.secondary)
+        .fixedSize()
     }
+    .lineLimit(1)
   }
 
   // MARK: - Monitor Button
 
   private var monitorButton: some View {
-    Button(action: {
-      isMonitoring.toggle()
-    }) {
-      HStack(spacing: 4) {
-        Image(systemName: isMonitoring ? "eye.fill" : "eye")
-          .font(.caption)
-        if !isMonitoring {
-          Text("Monitor")
-            .font(.caption2)
-        }
-      }
-      .foregroundColor(isMonitoring ? .brandPrimary : .secondary)
+    Button(action: onToggleMonitoring) {
+      Image(systemName: isMonitoring ? "eye.fill" : "eye")
+        .font(.caption)
+        .foregroundColor(isMonitoring ? .brandPrimary : .secondary)
     }
     .buttonStyle(.plain)
-    .padding(.horizontal, 6)
-    .padding(.vertical, 3)
+    .padding(6)
     .background(isMonitoring ? Color.brandPrimary.opacity(0.1) : Color.clear)
     .cornerRadius(4)
     .help(isMonitoring ? "Stop monitoring" : "Monitor session")
@@ -201,43 +173,6 @@ public struct CLISessionRow: View {
     .help("Open in Terminal")
   }
 
-  // MARK: - Monitoring
-
-  private func handleMonitoringChange(_ isMonitoring: Bool) {
-    print("[CLISessionRow] handleMonitoringChange: \(isMonitoring) for session: \(session.id)")
-
-    guard let fileWatcher = fileWatcher else {
-      print("[CLISessionRow] No file watcher available")
-      return
-    }
-
-    if isMonitoring {
-      // Subscribe FIRST to catch initial state
-      fileWatcher.statePublisher
-        .filter { $0.sessionId == session.id }
-        .receive(on: DispatchQueue.main)
-        .sink { update in
-          self.monitorState = update.state
-          print("[CLISessionRow] Received state update: \(update.state.status)")
-        }
-        .store(in: &cancellables)
-
-      // Then start monitoring (which will emit initial state)
-      Task {
-        await fileWatcher.startMonitoring(
-          sessionId: session.id,
-          projectPath: session.projectPath
-        )
-      }
-    } else {
-      // Stop monitoring
-      Task {
-        await fileWatcher.stopMonitoring(sessionId: session.id)
-      }
-      cancellables.removeAll()
-      monitorState = nil
-    }
-  }
 }
 
 // MARK: - Date Extension for Time Ago Display
@@ -266,12 +201,13 @@ extension Date {
         isActive: true,
         firstMessage: "I want to add a feature that monitors CLI sessions"
       ),
+      isMonitoring: false,
       onConnect: { print("Connect") },
       onCopyId: { print("Copy ID") },
-      fileWatcher: nil
+      onToggleMonitoring: { print("Toggle monitoring") }
     )
 
-    // Inactive worktree session with long message
+    // Inactive worktree session with long message (being monitored)
     CLISessionRow(
       session: CLISession(
         id: "f2c9bbf3-3b44-5513-b9f6-997d5e5eb481",
@@ -283,9 +219,10 @@ extension Date {
         isActive: false,
         firstMessage: "Help me implement a new SwiftUI view that displays session data in a hierarchical tree structure with expand/collapse functionality"
       ),
+      isMonitoring: true,
       onConnect: { print("Connect") },
       onCopyId: { print("Copy ID") },
-      fileWatcher: nil
+      onToggleMonitoring: { print("Toggle monitoring") }
     )
 
     // Session without first message
@@ -300,9 +237,10 @@ extension Date {
         isActive: false,
         firstMessage: nil
       ),
+      isMonitoring: false,
       onConnect: { print("Connect") },
       onCopyId: { print("Copy ID") },
-      fileWatcher: nil
+      onToggleMonitoring: { print("Toggle monitoring") }
     )
   }
   .padding()

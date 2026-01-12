@@ -19,6 +19,26 @@ public struct CLISessionsListView: View {
   }
 
   public var body: some View {
+    HSplitView {
+      // Left panel: Session list
+      sessionListPanel
+        .frame(minWidth: 300, idealWidth: 400)
+
+      // Right panel: Monitoring
+      MonitoringPanelView(viewModel: viewModel)
+        .frame(minWidth: 300, idealWidth: 350)
+    }
+    .onAppear {
+      // Auto-refresh sessions when view appears
+      if viewModel.hasRepositories {
+        viewModel.refresh()
+      }
+    }
+  }
+
+  // MARK: - Session List Panel
+
+  private var sessionListPanel: some View {
     VStack(spacing: 0) {
       // Add repository button (always visible)
       CLIRepositoryPickerView(onAddRepository: viewModel.showAddRepositoryPicker)
@@ -31,12 +51,6 @@ public struct CLISessionsListView: View {
         CLIEmptyStateView(onAddRepository: viewModel.showAddRepositoryPicker)
       } else {
         repositoriesList
-      }
-    }
-    .onAppear {
-      // Auto-refresh sessions when view appears
-      if viewModel.hasRepositories {
-        viewModel.refresh()
       }
     }
   }
@@ -79,7 +93,12 @@ public struct CLISessionsListView: View {
             onCopySessionId: { session in
               viewModel.copySessionId(session)
             },
-            fileWatcher: viewModel.fileWatcher,
+            isSessionMonitored: { sessionId in
+              viewModel.isMonitoring(sessionId: sessionId)
+            },
+            onToggleMonitoring: { session in
+              viewModel.toggleMonitoring(for: session)
+            },
             showLastMessage: viewModel.showLastMessage
           )
         }
@@ -194,5 +213,5 @@ public struct CLISessionsListView: View {
   let viewModel = CLISessionsViewModel(monitorService: service)
 
   return CLISessionsListView(viewModel: viewModel)
-    .frame(width: 400, height: 600)
+    .frame(width: 800, height: 600)
 }

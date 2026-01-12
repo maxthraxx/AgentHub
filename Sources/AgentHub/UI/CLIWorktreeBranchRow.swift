@@ -17,7 +17,8 @@ public struct CLIWorktreeBranchRow: View {
   let onToggleExpanded: () -> Void
   let onConnectSession: (CLISession) -> Void
   let onCopySessionId: (CLISession) -> Void
-  var fileWatcher: SessionFileWatcher?
+  let isSessionMonitored: (String) -> Bool
+  let onToggleMonitoring: (CLISession) -> Void
   var showLastMessage: Bool = false
 
   public init(
@@ -26,7 +27,8 @@ public struct CLIWorktreeBranchRow: View {
     onToggleExpanded: @escaping () -> Void,
     onConnectSession: @escaping (CLISession) -> Void,
     onCopySessionId: @escaping (CLISession) -> Void,
-    fileWatcher: SessionFileWatcher? = nil,
+    isSessionMonitored: @escaping (String) -> Bool,
+    onToggleMonitoring: @escaping (CLISession) -> Void,
     showLastMessage: Bool = false
   ) {
     self.worktree = worktree
@@ -34,7 +36,8 @@ public struct CLIWorktreeBranchRow: View {
     self.onToggleExpanded = onToggleExpanded
     self.onConnectSession = onConnectSession
     self.onCopySessionId = onCopySessionId
-    self.fileWatcher = fileWatcher
+    self.isSessionMonitored = isSessionMonitored
+    self.onToggleMonitoring = onToggleMonitoring
     self.showLastMessage = showLastMessage
   }
 
@@ -113,9 +116,10 @@ public struct CLIWorktreeBranchRow: View {
           ForEach(worktree.sessions) { session in
             CLISessionRow(
               session: session,
+              isMonitoring: isSessionMonitored(session.id),
               onConnect: { onConnectSession(session) },
               onCopyId: { onCopySessionId(session) },
-              fileWatcher: fileWatcher,
+              onToggleMonitoring: { onToggleMonitoring(session) },
               showLastMessage: showLastMessage
             )
             .padding(.leading, 20)
@@ -152,7 +156,8 @@ public struct CLIWorktreeBranchRow: View {
       onToggleExpanded: {},
       onConnectSession: { _ in },
       onCopySessionId: { _ in },
-      fileWatcher: nil
+      isSessionMonitored: { _ in false },
+      onToggleMonitoring: { _ in }
     )
 
     Divider()
@@ -179,7 +184,8 @@ public struct CLIWorktreeBranchRow: View {
       onToggleExpanded: {},
       onConnectSession: { _ in },
       onCopySessionId: { _ in },
-      fileWatcher: nil
+      isSessionMonitored: { _ in false },
+      onToggleMonitoring: { _ in }
     )
 
     Divider()
@@ -196,7 +202,8 @@ public struct CLIWorktreeBranchRow: View {
       onToggleExpanded: {},
       onConnectSession: { _ in },
       onCopySessionId: { _ in },
-      fileWatcher: nil
+      isSessionMonitored: { _ in false },
+      onToggleMonitoring: { _ in }
     )
   }
   .padding()

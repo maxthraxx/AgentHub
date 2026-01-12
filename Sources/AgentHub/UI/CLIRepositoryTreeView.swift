@@ -17,7 +17,8 @@ public struct CLIRepositoryTreeView: View {
   let onToggleWorktreeExpanded: (WorktreeBranch) -> Void
   let onConnectSession: (CLISession) -> Void
   let onCopySessionId: (CLISession) -> Void
-  var fileWatcher: SessionFileWatcher?
+  let isSessionMonitored: (String) -> Bool
+  let onToggleMonitoring: (CLISession) -> Void
   var showLastMessage: Bool = false
 
   public init(
@@ -27,7 +28,8 @@ public struct CLIRepositoryTreeView: View {
     onToggleWorktreeExpanded: @escaping (WorktreeBranch) -> Void,
     onConnectSession: @escaping (CLISession) -> Void,
     onCopySessionId: @escaping (CLISession) -> Void,
-    fileWatcher: SessionFileWatcher? = nil,
+    isSessionMonitored: @escaping (String) -> Bool,
+    onToggleMonitoring: @escaping (CLISession) -> Void,
     showLastMessage: Bool = false
   ) {
     self.repository = repository
@@ -36,7 +38,8 @@ public struct CLIRepositoryTreeView: View {
     self.onToggleWorktreeExpanded = onToggleWorktreeExpanded
     self.onConnectSession = onConnectSession
     self.onCopySessionId = onCopySessionId
-    self.fileWatcher = fileWatcher
+    self.isSessionMonitored = isSessionMonitored
+    self.onToggleMonitoring = onToggleMonitoring
     self.showLastMessage = showLastMessage
   }
 
@@ -54,7 +57,8 @@ public struct CLIRepositoryTreeView: View {
             onToggleExpanded: { onToggleWorktreeExpanded(worktree) },
             onConnectSession: onConnectSession,
             onCopySessionId: onCopySessionId,
-            fileWatcher: fileWatcher,
+            isSessionMonitored: isSessionMonitored,
+            onToggleMonitoring: onToggleMonitoring,
             showLastMessage: showLastMessage
           )
           .padding(.leading, 12)
@@ -177,7 +181,8 @@ public struct CLIRepositoryTreeView: View {
       onToggleWorktreeExpanded: { _ in print("Toggle worktree") },
       onConnectSession: { _ in print("Connect") },
       onCopySessionId: { _ in print("Copy") },
-      fileWatcher: nil
+      isSessionMonitored: { _ in false },
+      onToggleMonitoring: { _ in print("Toggle monitoring") }
     )
 
     // Collapsed repository
@@ -199,7 +204,8 @@ public struct CLIRepositoryTreeView: View {
       onToggleWorktreeExpanded: { _ in print("Toggle worktree") },
       onConnectSession: { _ in print("Connect") },
       onCopySessionId: { _ in print("Copy") },
-      fileWatcher: nil
+      isSessionMonitored: { _ in false },
+      onToggleMonitoring: { _ in print("Toggle monitoring") }
     )
   }
   .padding()
