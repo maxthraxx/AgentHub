@@ -40,12 +40,13 @@ public struct CLISessionsListView: View {
         repositoryPath: repository.path,
         repositoryName: repository.name,
         onDismiss: { createWorktreeRepository = nil },
-        onCreate: { branchName, directory, baseBranch in
+        onCreate: { branchName, directory, baseBranch, onProgress in
           try await viewModel.createWorktree(
             for: repository,
             branchName: branchName,
             directoryName: directory,
-            baseBranch: baseBranch
+            baseBranch: baseBranch,
+            onProgress: onProgress
           )
         }
       )

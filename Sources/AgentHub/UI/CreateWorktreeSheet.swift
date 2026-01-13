@@ -14,14 +14,14 @@ public struct CreateWorktreeSheet: View {
   let repositoryPath: String
   let repositoryName: String
   let onDismiss: () -> Void
-  let onCreate: (String, String, String?) async throws -> Void  // (branchName, directory, baseBranch)
+  let onCreate: (String, String, String?, @escaping @Sendable (WorktreeCreationProgress) async -> Void) async throws -> Void
 
   @State private var branchName: String = ""
   @State private var baseBranch: RemoteBranch?
   @State private var directoryName: String = ""
   @State private var availableBranches: [RemoteBranch] = []
   @State private var isLoading: Bool = true
-  @State private var isCreating: Bool = false
+  @State private var creationProgress: WorktreeCreationProgress = .idle
   @State private var errorMessage: String?
   @State private var showError: Bool = false
 
@@ -31,7 +31,7 @@ public struct CreateWorktreeSheet: View {
     repositoryPath: String,
     repositoryName: String,
     onDismiss: @escaping () -> Void,
-    onCreate: @escaping (String, String, String?) async throws -> Void
+    onCreate: @escaping (String, String, String?, @escaping @Sendable (WorktreeCreationProgress) async -> Void) async throws -> Void
   ) {
     self.repositoryPath = repositoryPath
     self.repositoryName = repositoryName
@@ -236,28 +236,71 @@ public struct CreateWorktreeSheet: View {
   // MARK: - Action Buttons
 
   private var actionButtons: some View {
-    HStack {
-      Button("Cancel") {
-        onDismiss()
+    VStack(spacing: 12) {
+      // Progress indicator (only show when creating)
+      if creationProgress.isInProgress {
+        worktreeProgressView
       }
-      .keyboardShortcut(.escape)
 
-      Spacer()
-
-      Button(action: { Task { await createWorktree() } }) {
-        HStack(spacing: 6) {
-          if isCreating {
-            ProgressView()
-              .scaleEffect(0.7)
-          }
-          Text(isCreating ? "Creating..." : "Create Worktree")
+      // Buttons
+      HStack {
+        Button("Cancel") {
+          onDismiss()
         }
+        .keyboardShortcut(.escape)
+        .disabled(creationProgress.isInProgress)
+
+        Spacer()
+
+        Button(action: { Task { await createWorktree() } }) {
+          HStack(spacing: 6) {
+            if creationProgress.isInProgress {
+              ProgressView()
+                .scaleEffect(0.7)
+            }
+            Text(creationProgress.isInProgress ? "Creating..." : "Create Worktree")
+          }
+        }
+        .keyboardShortcut(.return)
+        .disabled(!isValid || creationProgress.isInProgress)
+        .buttonStyle(.borderedProminent)
+        .tint(.brandPrimary)
       }
-      .keyboardShortcut(.return)
-      .disabled(!isValid || isCreating)
-      .buttonStyle(.borderedProminent)
-      .tint(.brandPrimary)
     }
+  }
+
+  // MARK: - Progress View
+
+  private var worktreeProgressView: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      // Progress bar with real file counts
+      ProgressView(value: creationProgress.progressValue)
+        .tint(.brandPrimary)
+        .animation(.linear(duration: 0.1), value: creationProgress.progressValue)
+
+      // Status message: "Updating files: 84/194"
+      HStack {
+        Image(systemName: creationProgress.icon)
+          .font(.caption)
+          .foregroundColor(.brandPrimary)
+
+        Text(creationProgress.statusMessage)
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .monospacedDigit()
+
+        Spacer()
+
+        // Percentage
+        Text("\(Int(creationProgress.progressValue * 100))%")
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .monospacedDigit()
+      }
+    }
+    .padding(12)
+    .background(Color.brandPrimary.opacity(0.05))
+    .cornerRadius(8)
   }
 
   // MARK: - Computed Properties
@@ -295,15 +338,27 @@ public struct CreateWorktreeSheet: View {
   }
 
   private func createWorktree() async {
-    isCreating = true
+    creationProgress = .preparing(message: "Preparing worktree...")
+
     do {
-      try await onCreate(branchName, directoryName, baseBranch?.displayName)
+      try await onCreate(branchName, directoryName, baseBranch?.displayName) { [self] newProgress in
+        await MainActor.run {
+          self.creationProgress = newProgress
+        }
+      }
+
+      // Brief delay to show completion state
+      try? await Task.sleep(for: .milliseconds(500))
       onDismiss()
     } catch {
+      creationProgress = .failed(error: error.localizedDescription)
       errorMessage = error.localizedDescription
       showError = true
+
+      // Reset to idle after showing error
+      try? await Task.sleep(for: .seconds(2))
+      creationProgress = .idle
     }
-    isCreating = false
   }
 }
 
@@ -314,8 +369,15 @@ public struct CreateWorktreeSheet: View {
     repositoryPath: "/Users/james/git/ClaudeCodeUI",
     repositoryName: "ClaudeCodeUI",
     onDismiss: { print("Dismissed") },
-    onCreate: { branch, directory, baseBranch in
+    onCreate: { branch, directory, baseBranch, onProgress in
       print("Create worktree: branch=\(branch), directory=\(directory), baseBranch=\(baseBranch ?? "HEAD")")
+      // Simulate progress
+      await onProgress(.preparing(message: "Preparing worktree..."))
+      try? await Task.sleep(for: .milliseconds(500))
+      for i in stride(from: 0, through: 100, by: 10) {
+        await onProgress(.updatingFiles(current: i, total: 100))
+        try? await Task.sleep(for: .milliseconds(100))
+      }
     }
   )
 }

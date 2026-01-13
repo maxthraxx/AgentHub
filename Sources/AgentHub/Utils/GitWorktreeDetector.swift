@@ -188,10 +188,13 @@ public class GitWorktreeDetector {
   }
 
   /// Parses the output of `git worktree list --porcelain`
+  /// Note: git worktree list always returns the main worktree first
   private static func parseWorktreeList(_ output: String, mainRepoPath: String) -> [GitWorktreeInfo] {
     var worktrees: [GitWorktreeInfo] = []
     var currentPath: String?
     var currentBranch: String?
+    var isFirstWorktree = true  // First entry is always the main worktree
+    var actualMainRepoPath: String?
 
     let lines = output.components(separatedBy: .newlines)
 
@@ -199,13 +202,17 @@ public class GitWorktreeDetector {
       if line.hasPrefix("worktree ") {
         // Save previous worktree if exists
         if let path = currentPath {
-          let isMainRepo = path == mainRepoPath
+          let isMainRepo = isFirstWorktree
+          if isMainRepo {
+            actualMainRepoPath = path
+          }
           worktrees.append(GitWorktreeInfo(
             path: path,
             branch: currentBranch,
             isWorktree: !isMainRepo,
-            mainRepoPath: isMainRepo ? nil : mainRepoPath
+            mainRepoPath: isMainRepo ? nil : actualMainRepoPath
           ))
+          isFirstWorktree = false
         }
 
         // Start new worktree
@@ -218,12 +225,15 @@ public class GitWorktreeDetector {
 
     // Add the last worktree
     if let path = currentPath {
-      let isMainRepo = path == mainRepoPath
+      let isMainRepo = isFirstWorktree
+      if isMainRepo {
+        actualMainRepoPath = path
+      }
       worktrees.append(GitWorktreeInfo(
         path: path,
         branch: currentBranch,
         isWorktree: !isMainRepo,
-        mainRepoPath: isMainRepo ? nil : mainRepoPath
+        mainRepoPath: isMainRepo ? nil : actualMainRepoPath
       ))
     }
 

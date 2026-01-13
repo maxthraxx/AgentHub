@@ -66,7 +66,7 @@ public struct CLIWorktreeBranchRow: View {
             .foregroundColor(.secondary)
             .frame(width: 12)
 
-          // Branch icon (same icon for both, different colors)
+          // Branch icon
           Image(systemName: "arrow.triangle.branch")
             .font(.caption)
             .foregroundColor(worktree.isWorktree ? .brandSecondary : .brandPrimary)

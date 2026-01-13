@@ -195,23 +195,26 @@ public final class CLISessionsViewModel {
     }
   }
 
-  /// Creates a new worktree for the given repository
+  /// Creates a new worktree for the given repository with progress reporting
   /// - Parameters:
   ///   - repository: The repository to create the worktree in
   ///   - branchName: The name for the new branch
   ///   - directoryName: The directory name for the worktree
   ///   - baseBranch: The branch to base the new branch on (nil = HEAD)
+  ///   - onProgress: Callback for progress updates
   public func createWorktree(
     for repository: SelectedRepository,
     branchName: String,
     directoryName: String,
-    baseBranch: String?
+    baseBranch: String?,
+    onProgress: @escaping @Sendable (WorktreeCreationProgress) async -> Void
   ) async throws {
     _ = try await worktreeService.createWorktreeWithNewBranch(
       at: repository.path,
       newBranchName: branchName,
       directoryName: directoryName,
-      startPoint: baseBranch
+      startPoint: baseBranch,
+      onProgress: onProgress
     )
 
     // Refresh to show the new worktree

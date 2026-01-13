@@ -217,6 +217,11 @@ public actor GitWorktreeService {
     return branches
   }
 
+  // MARK: - Progress Regex Pattern
+
+  /// Regex pattern to match git's "Updating files: XX% (current/total)" output
+  private static let updatingFilesPattern = #/Updating files:\s+\d+%\s+\((\d+)/(\d+)\)/#
+
   // MARK: - Create Worktree
 
   /// Creates a new worktree from an existing branch
@@ -305,6 +310,58 @@ public actor GitWorktreeService {
     print("[GitWorktreeService] Running: git \(args.joined(separator: " "))")
     try await runGitCommand(args, at: gitRoot, timeout: Self.gitWorktreeTimeout)
     print("[GitWorktreeService] Worktree with new branch created successfully")
+
+    return worktreePath
+  }
+
+  /// Creates a new worktree with a new branch, reporting progress via callback
+  /// - Parameters:
+  ///   - repoPath: Path to the git repository (or any subdirectory)
+  ///   - newBranchName: Name for the new branch
+  ///   - directoryName: Name for the new worktree directory
+  ///   - startPoint: Optional starting point (defaults to HEAD)
+  ///   - onProgress: Callback for progress updates
+  /// - Returns: Path to the created worktree
+  public func createWorktreeWithNewBranch(
+    at repoPath: String,
+    newBranchName: String,
+    directoryName: String,
+    startPoint: String? = nil,
+    onProgress: @escaping @Sendable (WorktreeCreationProgress) async -> Void
+  ) async throws -> String {
+    print("[GitWorktreeService] createWorktreeWithNewBranch (with progress): repo=\(repoPath), branch=\(newBranchName), dir=\(directoryName)")
+
+    // Send initial progress
+    await onProgress(.preparing(message: "Preparing worktree..."))
+
+    // Find actual git root
+    let gitRoot = try await findGitRoot(at: repoPath)
+    print("[GitWorktreeService] Using git root: \(gitRoot)")
+
+    // Worktree will be created as sibling to git root
+    let parentDir = (gitRoot as NSString).deletingLastPathComponent
+    let worktreePath = (parentDir as NSString).appendingPathComponent(directoryName)
+    print("[GitWorktreeService] Worktree will be created at: \(worktreePath)")
+
+    // Validate directory doesn't exist
+    if FileManager.default.fileExists(atPath: worktreePath) {
+      print("[GitWorktreeService] ERROR: Directory already exists")
+      await onProgress(.failed(error: "Directory already exists"))
+      throw WorktreeCreationError.directoryAlreadyExists(worktreePath)
+    }
+
+    // Create worktree with new branch: git worktree add -b <branch> <path> [start-point]
+    var args = ["worktree", "add", "-b", newBranchName, worktreePath]
+    if let startPoint = startPoint {
+      args.append(startPoint)
+    }
+
+    print("[GitWorktreeService] Running: git \(args.joined(separator: " "))")
+    try await runGitCommandWithProgress(args, at: gitRoot, timeout: Self.gitWorktreeTimeout, onProgress: onProgress)
+    print("[GitWorktreeService] Worktree with new branch created successfully")
+
+    // Send completion
+    await onProgress(.completed(path: worktreePath))
 
     return worktreePath
   }
@@ -421,6 +478,143 @@ public actor GitWorktreeService {
     }
 
     // Check if process was terminated due to timeout
+    if didTimeout {
+      throw WorktreeCreationError.timeout
+    }
+
+    if process.terminationStatus != 0 {
+      throw WorktreeCreationError.gitCommandFailed(errorOutput.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    return output
+  }
+
+  /// Runs a git command and streams stderr for progress parsing
+  /// - Parameters:
+  ///   - arguments: Git command arguments
+  ///   - path: Working directory
+  ///   - timeout: Maximum time to wait
+  ///   - onProgress: Callback for progress updates
+  @discardableResult
+  private func runGitCommandWithProgress(
+    _ arguments: [String],
+    at path: String,
+    timeout: TimeInterval,
+    onProgress: @escaping @Sendable (WorktreeCreationProgress) async -> Void
+  ) async throws -> String {
+    print("[GitWorktreeService] runGitCommandWithProgress: git \(arguments.joined(separator: " ")) at \(path)")
+
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+    process.arguments = arguments
+    process.currentDirectoryURL = URL(fileURLWithPath: path)
+
+    // Prevent git from prompting for credentials/input
+    var environment = ProcessInfo.processInfo.environment
+    environment["GIT_TERMINAL_PROMPT"] = "0"
+    environment["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes"
+    process.environment = environment
+
+    // Provide empty stdin to prevent waiting for input
+    let inputPipe = Pipe()
+    process.standardInput = inputPipe
+
+    let outputPipe = Pipe()
+    let errorPipe = Pipe()
+    process.standardOutput = outputPipe
+    process.standardError = errorPipe
+
+    // Accumulated stderr for error reporting
+    actor StderrAccumulator {
+      var data = Data()
+      func append(_ newData: Data) {
+        data.append(newData)
+      }
+      func getData() -> Data {
+        return data
+      }
+    }
+    let stderrAccumulator = StderrAccumulator()
+
+    // Capture the regex pattern for use in the closure
+    let pattern = Self.updatingFilesPattern
+
+    // Set up stderr handler to parse progress
+    errorPipe.fileHandleForReading.readabilityHandler = { handle in
+      let data = handle.availableData
+      guard !data.isEmpty else { return }
+
+      // Accumulate stderr data
+      Task {
+        await stderrAccumulator.append(data)
+      }
+
+      guard let line = String(data: data, encoding: .utf8) else { return }
+      print("[GitWorktreeService] stderr chunk: \(line)")
+
+      // Parse progress from stderr
+      if let match = line.firstMatch(of: pattern) {
+        if let current = Int(match.1), let total = Int(match.2) {
+          Task {
+            await onProgress(.updatingFiles(current: current, total: total))
+          }
+        }
+      } else if line.contains("Preparing worktree") {
+        Task {
+          await onProgress(.preparing(message: "Preparing worktree..."))
+        }
+      }
+    }
+
+    do {
+      try process.run()
+      try inputPipe.fileHandleForWriting.close()
+    } catch {
+      errorPipe.fileHandleForReading.readabilityHandler = nil
+      print("[GitWorktreeService] Failed to start process: \(error)")
+      throw WorktreeCreationError.gitCommandFailed("Failed to start git: \(error.localizedDescription)")
+    }
+
+    // Wait for process with timeout
+    let didTimeout = await withTaskGroup(of: Bool.self) { group in
+      group.addTask {
+        await withCheckedContinuation { continuation in
+          DispatchQueue.global().async {
+            process.waitUntilExit()
+            continuation.resume(returning: false)
+          }
+        }
+      }
+
+      group.addTask {
+        do {
+          try await Task.sleep(for: .seconds(timeout))
+          if process.isRunning {
+            print("[GitWorktreeService] Command timed out after \(timeout)s, terminating")
+            process.terminate()
+          }
+          return true
+        } catch {
+          return false
+        }
+      }
+
+      let result = await group.next() ?? false
+      group.cancelAll()
+      return result
+    }
+
+    // Clean up handler
+    errorPipe.fileHandleForReading.readabilityHandler = nil
+
+    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+    let errorData = await stderrAccumulator.getData()
+
+    let output = String(data: outputData, encoding: .utf8) ?? ""
+    let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
+
+    print("[GitWorktreeService] Exit status: \(process.terminationStatus), timed out: \(didTimeout)")
+
     if didTimeout {
       throw WorktreeCreationError.timeout
     }
