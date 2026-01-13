@@ -18,28 +18,48 @@ public struct CLIEmptyStateView: View {
   }
 
   public var body: some View {
-    VStack(spacing: 20) {
-      Image(systemName: "terminal")
-        .font(.system(size: 48))
-        .foregroundColor(.secondary)
+    VStack {
+      VStack(spacing: 20) {
+        ZStack {
+          RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(
+              LinearGradient(
+                colors: [
+                  Color.brandPrimary.opacity(0.2),
+                  Color.brandSecondary.opacity(0.08)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+              )
+            )
+            .frame(width: 72, height: 72)
 
-      VStack(spacing: 8) {
-        Text("No Repositories Selected")
-          .font(.headline)
+          Image(systemName: "terminal")
+            .font(.system(size: 34, weight: .semibold, design: .rounded))
+            .foregroundColor(.brandPrimary)
+        }
 
-        Text("Add a git repository to monitor CLI sessions from your terminal.")
-          .font(.caption)
-          .foregroundColor(.secondary)
-          .multilineTextAlignment(.center)
-          .padding(.horizontal, 32)
+        VStack(spacing: 8) {
+          Text("No Repositories Selected")
+            .font(.system(.headline, design: .rounded))
+
+          Text("Add a git repository to monitor CLI sessions from your terminal.")
+            .font(.system(.caption, design: .rounded))
+            .foregroundColor(.secondary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 16)
+        }
+
+        Button(action: onAddRepository) {
+          Label("Add Repository", systemImage: "plus.circle.fill")
+            .font(.subheadline)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.brandPrimary)
       }
-
-      Button(action: onAddRepository) {
-        Label("Add Repository", systemImage: "plus.circle.fill")
-          .font(.subheadline)
-      }
-      .buttonStyle(.borderedProminent)
-      .tint(.brandPrimary)
+      .padding(24)
+      .agentHubCard(isHighlighted: true)
+      .frame(maxWidth: 360)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .padding()

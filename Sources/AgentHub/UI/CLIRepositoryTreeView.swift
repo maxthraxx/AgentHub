@@ -68,8 +68,8 @@ public struct CLIRepositoryTreeView: View {
         }
       }
     }
-    .background(Color.gray.opacity(0.05))
-    .cornerRadius(8)
+    .padding(6)
+    .agentHubCard(isHighlighted: repository.activeSessionCount > 0)
   }
 
   // MARK: - Repository Header
@@ -91,7 +91,7 @@ public struct CLIRepositoryTreeView: View {
 
           // Repository name (no path - worktree rows show paths)
           Text(repository.name)
-            .font(.subheadline)
+            .font(.headline)
             .fontWeight(.semibold)
             .foregroundColor(.primary)
         }
@@ -106,18 +106,15 @@ public struct CLIRepositoryTreeView: View {
         HStack(spacing: 4) {
           if repository.activeSessionCount > 0 {
             Circle()
-              .fill(Color.green)
+              .fill(Color.brandPrimary)
               .frame(width: 6, height: 6)
           }
 
           Text("\(repository.totalSessionCount)")
             .font(.caption)
-            .foregroundColor(.secondary)
+            .foregroundColor(repository.activeSessionCount > 0 ? .brandPrimary : .secondary)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(4)
+        .agentHubChip(isActive: repository.activeSessionCount > 0)
       }
 
       // Create worktree button
@@ -125,6 +122,7 @@ public struct CLIRepositoryTreeView: View {
         Image(systemName: "arrow.triangle.branch")
           .font(.caption)
           .foregroundColor(.brandPrimary)
+          .agentHubChip()
       }
       .buttonStyle(.plain)
       .help("Create worktree")
@@ -134,12 +132,14 @@ public struct CLIRepositoryTreeView: View {
         Image(systemName: "xmark.circle.fill")
           .font(.caption)
           .foregroundColor(.secondary)
+          .agentHubChip()
       }
       .buttonStyle(.plain)
       .help("Remove repository")
     }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 10)
+    .padding(.horizontal, 10)
+    .padding(.vertical, 8)
+    .agentHubRow(isHighlighted: repository.activeSessionCount > 0)
   }
 }
 

@@ -14,6 +14,7 @@ import SwiftUI
 public struct CLISessionsListView: View {
   @Bindable var viewModel: CLISessionsViewModel
   @State private var createWorktreeRepository: SelectedRepository?
+  @Environment(\.colorScheme) private var colorScheme
 
   public init(viewModel: CLISessionsViewModel) {
     self.viewModel = viewModel
@@ -23,12 +24,23 @@ public struct CLISessionsListView: View {
     HSplitView {
       // Left panel: Session list
       sessionListPanel
+        .padding(12)
+        .agentHubPanel()
         .frame(minWidth: 300, idealWidth: 400)
+        .padding(.vertical, 8)
+        .padding(.leading, 8)
+        .padding(.trailing, 4)
 
       // Right panel: Monitoring
       MonitoringPanelView(viewModel: viewModel)
+        .padding(12)
+        .agentHubPanel()
         .frame(minWidth: 300, idealWidth: 350)
+        .padding(.vertical, 8)
+        .padding(.leading, 4)
+        .padding(.trailing, 8)
     }
+    .background(appBackground.ignoresSafeArea())
     .onAppear {
       // Auto-refresh sessions when view appears
       if viewModel.hasRepositories {
@@ -53,14 +65,27 @@ public struct CLISessionsListView: View {
     }
   }
 
+  // MARK: - App Background
+
+  private var appBackground: some View {
+    LinearGradient(
+      colors: [
+        Color.surfaceCanvas,
+        Color.surfaceCanvas.opacity(colorScheme == .dark ? 0.98 : 0.94),
+        Color.brandTertiary.opacity(colorScheme == .dark ? 0.06 : 0.1)
+      ],
+      startPoint: .topLeading,
+      endPoint: .bottomTrailing
+    )
+  }
+
   // MARK: - Session List Panel
 
   private var sessionListPanel: some View {
     VStack(spacing: 0) {
       // Add repository button (always visible)
       CLIRepositoryPickerView(onAddRepository: viewModel.showAddRepositoryPicker)
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
+        .padding(.bottom, 10)
 
       if viewModel.isLoading && !viewModel.hasRepositories {
         loadingView
@@ -123,7 +148,6 @@ public struct CLISessionsListView: View {
           )
         }
       }
-      .padding(.horizontal, 12)
       .padding(.vertical, 8)
     }
   }
@@ -142,22 +166,31 @@ public struct CLISessionsListView: View {
             .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
-        .background(Color.blue.opacity(0.1))
-        .cornerRadius(6)
+        .padding(.vertical, DesignTokens.Spacing.sm)
+        .background(
+          RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+            .fill(Color.blue.opacity(0.1))
+        )
       }
 
       HStack {
         // Session count
         if viewModel.activeSessionCount > 0 {
-          HStack(spacing: 4) {
+          HStack(spacing: 6) {
             Circle()
               .fill(Color.green)
-              .frame(width: 6, height: 6)
+              .frame(width: DesignTokens.StatusSize.sm, height: DesignTokens.StatusSize.sm)
+              .shadow(color: .green.opacity(0.4), radius: 2)
             Text("\(viewModel.activeSessionCount) active")
-              .font(.caption)
+              .font(.system(.caption, weight: .medium))
               .foregroundColor(.green)
           }
+          .padding(.horizontal, DesignTokens.Spacing.sm)
+          .padding(.vertical, DesignTokens.Spacing.xs)
+          .background(
+            Capsule()
+              .fill(Color.green.opacity(0.1))
+          )
         }
 
         Text("\(viewModel.totalSessionCount) total sessions")
@@ -179,32 +212,46 @@ public struct CLISessionsListView: View {
             }
           }
         } label: {
-          HStack(spacing: 4) {
+          HStack(spacing: 6) {
             Image(systemName: "bell")
+              .font(.system(size: DesignTokens.IconSize.sm))
             Text("\(viewModel.approvalTimeoutSeconds)s")
+              .font(.system(.caption, weight: .medium))
           }
-          .font(.subheadline)
           .foregroundColor(.secondary)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 4)
-          .background(Color.gray.opacity(0.1))
-          .cornerRadius(4)
+          .padding(.horizontal, DesignTokens.Spacing.sm)
+          .padding(.vertical, DesignTokens.Spacing.xs + 2)
+          .background(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+              .fill(Color.surfaceOverlay)
+          )
+          .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+              .stroke(Color.borderSubtle, lineWidth: 1)
+          )
         }
         .menuStyle(.borderlessButton)
         .help("Alert sound delay: \(viewModel.approvalTimeoutSeconds) seconds")
 
         // First/Last message toggle
         Button(action: { viewModel.showLastMessage.toggle() }) {
-          HStack(spacing: 4) {
+          HStack(spacing: 6) {
             Image(systemName: viewModel.showLastMessage ? "arrow.down.to.line" : "arrow.up.to.line")
+              .font(.system(size: DesignTokens.IconSize.sm))
             Text(viewModel.showLastMessage ? "Last" : "First")
+              .font(.system(.caption, weight: .medium))
           }
-          .font(.subheadline)
           .foregroundColor(.secondary)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 4)
-          .background(Color.gray.opacity(0.1))
-          .cornerRadius(4)
+          .padding(.horizontal, DesignTokens.Spacing.sm)
+          .padding(.vertical, DesignTokens.Spacing.xs + 2)
+          .background(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+              .fill(Color.surfaceOverlay)
+          )
+          .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+              .stroke(Color.borderSubtle, lineWidth: 1)
+          )
         }
         .buttonStyle(.plain)
         .help(viewModel.showLastMessage ? "Showing last message" : "Showing first message")
@@ -212,17 +259,23 @@ public struct CLISessionsListView: View {
         // Refresh button
         Button(action: viewModel.refresh) {
           Image(systemName: "arrow.clockwise")
-            .font(.subheadline)
-            .padding(6)
-            .background(Color.gray.opacity(0.1))
-            .cornerRadius(4)
+            .font(.system(size: DesignTokens.IconSize.md))
+            .frame(width: 28, height: 28)
+            .background(
+              RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+                .fill(Color.surfaceOverlay)
+            )
+            .overlay(
+              RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+                .stroke(Color.borderSubtle, lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
         .disabled(viewModel.isLoading)
         .help("Refresh sessions")
       }
     }
-    .padding(.horizontal, 4)
+    .padding(.horizontal, DesignTokens.Spacing.xs)
   }
 }
 

@@ -38,26 +38,33 @@ public struct MonitoringPanelView: View {
 
   private var header: some View {
     HStack {
-      Image(systemName: "eye.fill")
-        .foregroundColor(.brandPrimary)
-      Text("Monitoring")
-        .font(.headline)
+      HStack(spacing: 8) {
+        Image(systemName: "eye.fill")
+          .font(.system(size: DesignTokens.IconSize.lg))
+          .foregroundColor(.brandPrimary)
+          .symbolRenderingMode(.hierarchical)
+        Text("Monitoring")
+          .font(.title3.weight(.semibold))
+      }
 
       Spacer()
 
       // Count badge
       if !viewModel.monitoredSessionIds.isEmpty {
         Text("\(viewModel.monitoredSessionIds.count)")
-          .font(.caption)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 2)
-          .background(Color.brandPrimary.opacity(0.1))
+          .font(.system(.caption, design: .rounded).weight(.semibold))
+          .monospacedDigit()
+          .padding(.horizontal, DesignTokens.Spacing.sm)
+          .padding(.vertical, DesignTokens.Spacing.xs)
+          .background(
+            Capsule()
+              .fill(Color.brandPrimary.opacity(0.15))
+          )
           .foregroundColor(.brandPrimary)
-          .cornerRadius(10)
       }
     }
-    .padding(.horizontal, 16)
-    .padding(.vertical, 12)
+    .padding(.horizontal, DesignTokens.Spacing.lg)
+    .padding(.vertical, DesignTokens.Spacing.md)
   }
 
   // MARK: - Empty State
@@ -88,9 +95,14 @@ public struct MonitoringPanelView: View {
     ScrollView {
       LazyVStack(spacing: 12) {
         ForEach(viewModel.monitoredSessions, id: \.session.id) { item in
+          let codeChangesState = item.state.map {
+            CodeChangesState.from(activities: $0.recentActivities)
+          }
+
           MonitoringCardView(
             session: item.session,
             state: item.state,
+            codeChangesState: codeChangesState,
             onStopMonitoring: {
               viewModel.stopMonitoring(session: item.session)
             },

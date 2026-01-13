@@ -238,10 +238,14 @@ public struct SessionJSONLParser {
             input: inputPreview
           )
 
+          // Extract full input for code-changing tools
+          let codeChangeInput = extractCodeChangeInput(name: name, input: block.input)
+
           addActivity(
             type: .toolUse(name: name),
             description: inputPreview ?? name,
             timestamp: timestamp,
+            codeChangeInput: codeChangeInput,
             to: &result
           )
         }
@@ -350,19 +354,68 @@ public struct SessionJSONLParser {
     type: ActivityType,
     description: String,
     timestamp: Date?,
+    codeChangeInput: CodeChangeInput? = nil,
     to result: inout ParseResult
   ) {
     let entry = ActivityEntry(
       timestamp: timestamp ?? Date(),
       type: type,
-      description: description
+      description: description,
+      toolInput: codeChangeInput
     )
 
     result.recentActivities.append(entry)
 
-    // Keep only recent activities (last 20)
-    if result.recentActivities.count > 20 {
-      result.recentActivities.removeFirst(result.recentActivities.count - 20)
+    // Keep more activities for code change tracking (was 20, now 100)
+    if result.recentActivities.count > 100 {
+      result.recentActivities.removeFirst(result.recentActivities.count - 100)
+    }
+  }
+
+  /// Extract full input parameters for code-changing tools (Edit, Write, MultiEdit)
+  private static func extractCodeChangeInput(name: String, input: AnyCodable?) -> CodeChangeInput? {
+    guard let input = input,
+          let dict = input.value as? [String: Any],
+          let filePath = dict["file_path"] as? String else {
+      return nil
+    }
+
+    switch name {
+    case "Edit":
+      return CodeChangeInput(
+        toolType: .edit,
+        filePath: filePath,
+        oldString: dict["old_string"] as? String,
+        newString: dict["new_string"] as? String,
+        replaceAll: dict["replace_all"] as? Bool
+      )
+
+    case "Write":
+      return CodeChangeInput(
+        toolType: .write,
+        filePath: filePath,
+        newString: dict["content"] as? String
+      )
+
+    case "MultiEdit":
+      var editsArray: [[String: String]]? = nil
+      if let edits = dict["edits"] as? [[String: Any]] {
+        editsArray = edits.compactMap { edit in
+          var result = [String: String]()
+          if let oldStr = edit["old_string"] as? String { result["old_string"] = oldStr }
+          if let newStr = edit["new_string"] as? String { result["new_string"] = newStr }
+          if let replaceAll = edit["replace_all"] as? Bool { result["replace_all"] = String(replaceAll) }
+          return result.isEmpty ? nil : result
+        }
+      }
+      return CodeChangeInput(
+        toolType: .multiEdit,
+        filePath: filePath,
+        edits: editsArray
+      )
+
+    default:
+      return nil
     }
   }
 

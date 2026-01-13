@@ -21,6 +21,13 @@ public struct CLIWorktreeBranchRow: View {
   let onToggleMonitoring: (CLISession) -> Void
   var showLastMessage: Bool = false
 
+  // Max visible sessions before scrolling
+  private let maxVisibleSessions = 4
+  private let sessionRowHeight: CGFloat = 88
+  private var maxSessionsHeight: CGFloat {
+    CGFloat(maxVisibleSessions) * sessionRowHeight
+  }
+
   public init(
     worktree: WorktreeBranch,
     isExpanded: Bool,
@@ -75,13 +82,13 @@ public struct CLIWorktreeBranchRow: View {
           HStack(spacing: 4) {
             // Path (truncated if needed)
             Text(truncatedPath(worktree.path))
-              .font(.caption)
+              .font(.system(.subheadline, design: .monospaced))
               .foregroundColor(worktree.isWorktree ? .brandSecondary : .brandPrimary)
               .lineLimit(1)
 
             // Branch name in brackets
             Text("[\(worktree.name)]")
-              .font(.caption)
+              .font(.subheadline)
               .foregroundColor(.secondary)
           }
 
@@ -91,11 +98,8 @@ public struct CLIWorktreeBranchRow: View {
           if !worktree.sessions.isEmpty {
             Text("\(worktree.sessions.count)")
               .font(.caption)
-              .padding(.horizontal, 6)
-              .padding(.vertical, 2)
-              .background(worktree.activeSessionCount > 0 ? Color.green.opacity(0.2) : Color.gray.opacity(0.2))
-              .foregroundColor(worktree.activeSessionCount > 0 ? .green : .secondary)
-              .cornerRadius(4)
+              .foregroundColor(worktree.activeSessionCount > 0 ? .brandPrimary : .secondary)
+              .agentHubChip(isActive: worktree.activeSessionCount > 0)
           }
         }
         .padding(.vertical, 6)
@@ -113,17 +117,37 @@ public struct CLIWorktreeBranchRow: View {
             .padding(.leading, 32)
             .padding(.vertical, 4)
         } else {
-          ForEach(worktree.sessions) { session in
-            CLISessionRow(
-              session: session,
-              isMonitoring: isSessionMonitored(session.id),
-              onConnect: { onConnectSession(session) },
-              onCopyId: { onCopySessionId(session) },
-              onToggleMonitoring: { onToggleMonitoring(session) },
-              showLastMessage: showLastMessage
-            )
-            .padding(.leading, 20)
+          VStack(spacing: 0) {
+            ScrollView {
+              VStack(spacing: 8) {
+                ForEach(worktree.sessions) { session in
+                  CLISessionRow(
+                    session: session,
+                    isMonitoring: isSessionMonitored(session.id),
+                    onConnect: { onConnectSession(session) },
+                    onCopyId: { onCopySessionId(session) },
+                    onToggleMonitoring: { onToggleMonitoring(session) },
+                    showLastMessage: showLastMessage
+                  )
+                }
+              }
+              .padding(.vertical, 4)
+            }
+            .frame(maxHeight: maxSessionsHeight)
+
+            // Show indicator if there are more sessions
+            if worktree.sessions.count > maxVisibleSessions {
+              HStack(spacing: 4) {
+                Image(systemName: "ellipsis")
+                  .font(.caption2)
+                Text("\(worktree.sessions.count) sessions")
+                  .font(.caption2)
+              }
+              .foregroundColor(.secondary)
+              .padding(.top, 4)
+            }
           }
+          .padding(.leading, 20)
         }
       }
     }

@@ -6,6 +6,35 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Design Tokens
+
+public enum DesignTokens {
+  public enum Spacing {
+    public static let xs: CGFloat = 4
+    public static let sm: CGFloat = 8
+    public static let md: CGFloat = 12
+    public static let lg: CGFloat = 16
+    public static let xl: CGFloat = 20
+  }
+
+  public enum Radius {
+    public static let sm: CGFloat = 6
+    public static let md: CGFloat = 10
+    public static let lg: CGFloat = 14
+  }
+
+  public enum StatusSize {
+    public static let sm: CGFloat = 8
+    public static let md: CGFloat = 10
+  }
+
+  public enum IconSize {
+    public static let sm: CGFloat = 12
+    public static let md: CGFloat = 14
+    public static let lg: CGFloat = 16
+  }
+}
+
 /// Available app themes
 public enum AppTheme: String, CaseIterable, Identifiable {
   case claude = "claude"
@@ -142,6 +171,54 @@ extension Color {
   static let backgroundLight = Color(hex: "#FAF9F5")
   static let expandedContentBackgroundDark = Color(hex: "#1F2421")
   static let expandedContentBackgroundLight = Color.white//(hex: "#F8F4E3")
+
+  // MARK: - Surface Colors (for depth hierarchy)
+
+  public static var surfaceCanvas: Color {
+    Color(nsColor: .windowBackgroundColor)
+  }
+
+  public static var surfacePanel: Color {
+    Color(nsColor: .controlBackgroundColor)
+  }
+
+  public static var surfaceCard: Color {
+    Color(nsColor: .textBackgroundColor)
+  }
+
+  public static var surfaceStroke: Color {
+    Color(nsColor: .separatorColor)
+  }
+
+  public static var surfaceElevated: Color {
+    Color(nsColor: .controlBackgroundColor)
+  }
+
+  public static var surfaceOverlay: Color {
+    Color.gray.opacity(0.06)
+  }
+
+  public static var surfaceHover: Color {
+    Color.gray.opacity(0.10)
+  }
+
+  public static var borderSubtle: Color {
+    Color.gray.opacity(0.12)
+  }
+
+  // MARK: - Theme-Aware Background Gradient
+
+  public static var backgroundGradient: LinearGradient {
+    LinearGradient(
+      colors: [
+        brandPrimary.opacity(0.08),
+        brandSecondary.opacity(0.04),
+        Color.clear
+      ],
+      startPoint: .topLeading,
+      endPoint: .bottomTrailing
+    )
+  }
 
   // MARK: - Adaptive Colors
 

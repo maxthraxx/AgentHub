@@ -20,6 +20,15 @@
       }
     },
     {
+      "identity" : "pierrediffsswift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jamesrochabrun/PierreDiffsSwift",
+      "state" : {
+        "branch" : "main",
+        "revision" : "95037c9cd24e33af149ed081387a68d5091f46d0"
+      }
+    },
+    {
       "identity" : "swift-algorithms",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-algorithms.git",

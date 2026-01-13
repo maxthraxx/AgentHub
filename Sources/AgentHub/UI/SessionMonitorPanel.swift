@@ -57,38 +57,61 @@ public struct SessionMonitorPanel: View {
 
 private struct StatusBadge: View {
   let status: SessionStatus
+  @State private var pulse = false
 
   var body: some View {
     HStack(spacing: 8) {
       // Animated indicator for active states
-      if isActiveStatus {
+      ZStack {
         Circle()
           .fill(statusColor)
-          .frame(width: 8, height: 8)
-          .overlay(
-            Circle()
-              .stroke(statusColor.opacity(0.5), lineWidth: 2)
-              .scaleEffect(1.5)
-          )
-      } else {
-        Circle()
-          .fill(statusColor)
-          .frame(width: 8, height: 8)
+          .frame(width: DesignTokens.StatusSize.md, height: DesignTokens.StatusSize.md)
+          .shadow(color: statusColor.opacity(0.5), radius: isActiveStatus ? 6 : 3)
+
+        if isActiveStatus {
+          Circle()
+            .stroke(statusColor.opacity(0.3), lineWidth: 2)
+            .frame(width: 18, height: 18)
+            .scaleEffect(pulse ? 1.3 : 1.0)
+            .opacity(pulse ? 0 : 1)
+        }
       }
 
       Image(systemName: status.icon)
-        .font(.caption)
+        .font(.system(size: DesignTokens.IconSize.md))
         .foregroundColor(statusColor)
 
       Text(status.displayName)
-        .font(.caption)
+        .font(.subheadline)
         .fontWeight(.medium)
         .foregroundColor(statusColor)
     }
-    .padding(.horizontal, 10)
-    .padding(.vertical, 6)
-    .background(statusColor.opacity(0.1))
-    .cornerRadius(6)
+    .padding(.horizontal, DesignTokens.Spacing.md)
+    .padding(.vertical, DesignTokens.Spacing.sm)
+    .background(
+      RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+        .fill(statusColor.opacity(0.12))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+        .stroke(statusColor.opacity(0.25), lineWidth: 1)
+    )
+    .onAppear {
+      if isActiveStatus {
+        withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: false)) {
+          pulse = true
+        }
+      }
+    }
+    .onChange(of: isActiveStatus) { _, newValue in
+      if newValue {
+        withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: false)) {
+          pulse = true
+        }
+      } else {
+        pulse = false
+      }
+    }
   }
 
   private var isActiveStatus: Bool {

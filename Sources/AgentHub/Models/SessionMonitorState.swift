@@ -145,17 +145,58 @@ public struct ActivityEntry: Identifiable, Equatable, Sendable {
   public let timestamp: Date
   public let type: ActivityType
   public let description: String
+  public let toolInput: CodeChangeInput?
 
   public init(
     id: UUID = UUID(),
     timestamp: Date,
     type: ActivityType,
-    description: String
+    description: String,
+    toolInput: CodeChangeInput? = nil
   ) {
     self.id = id
     self.timestamp = timestamp
     self.type = type
     self.description = description
+    self.toolInput = toolInput
+  }
+}
+
+// MARK: - CodeChangeInput
+
+/// Holds full input parameters for code-changing tools (Edit, Write, MultiEdit)
+public struct CodeChangeInput: Equatable, Sendable {
+  public enum ToolType: String, Equatable, Sendable {
+    case edit = "Edit"
+    case write = "Write"
+    case multiEdit = "MultiEdit"
+  }
+
+  public let toolType: ToolType
+  public let filePath: String
+  public let oldString: String?
+  public let newString: String?
+  public let replaceAll: Bool?
+  public let edits: [[String: String]]?
+
+  public init(
+    toolType: ToolType,
+    filePath: String,
+    oldString: String? = nil,
+    newString: String? = nil,
+    replaceAll: Bool? = nil,
+    edits: [[String: String]]? = nil
+  ) {
+    self.toolType = toolType
+    self.filePath = filePath
+    self.oldString = oldString
+    self.newString = newString
+    self.replaceAll = replaceAll
+    self.edits = edits
+  }
+
+  public var fileName: String {
+    URL(fileURLWithPath: filePath).lastPathComponent
   }
 }
 

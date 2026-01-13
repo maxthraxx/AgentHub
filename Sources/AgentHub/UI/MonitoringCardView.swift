@@ -7,23 +7,37 @@
 
 import SwiftUI
 
+// MARK: - CodeChangesSheetItem
+
+/// Identifiable wrapper for sheet(item:) pattern - captures all data needed for the sheet
+private struct CodeChangesSheetItem: Identifiable {
+  let id = UUID()
+  let session: CLISession
+  let codeChangesState: CodeChangesState
+}
+
 // MARK: - MonitoringCardView
 
 /// Card view for displaying a monitored session in the monitoring panel
 public struct MonitoringCardView: View {
   let session: CLISession
   let state: SessionMonitorState?
+  let codeChangesState: CodeChangesState?
   let onStopMonitoring: () -> Void
   let onConnect: () -> Void
+
+  @State private var codeChangesSheetItem: CodeChangesSheetItem?
 
   public init(
     session: CLISession,
     state: SessionMonitorState?,
+    codeChangesState: CodeChangesState? = nil,
     onStopMonitoring: @escaping () -> Void,
     onConnect: @escaping () -> Void
   ) {
     self.session = session
     self.state = state
+    self.codeChangesState = codeChangesState
     self.onStopMonitoring = onStopMonitoring
     self.onConnect = onConnect
   }
@@ -47,12 +61,24 @@ public struct MonitoringCardView: View {
       SessionMonitorPanel(state: state)
     }
     .padding(12)
-    .background(Color.gray.opacity(0.05))
-    .cornerRadius(8)
-    .overlay(
-      RoundedRectangle(cornerRadius: 8)
-        .stroke(statusBorderColor, lineWidth: 1)
-    )
+    .agentHubCard(isHighlighted: isHighlighted)
+    .sheet(item: $codeChangesSheetItem) { item in
+      CodeChangesView(
+        session: item.session,
+        codeChangesState: item.codeChangesState,
+        onDismiss: { codeChangesSheetItem = nil }
+      )
+    }
+  }
+
+  private var isHighlighted: Bool {
+    guard let state = state else { return false }
+    switch state.status {
+    case .awaitingApproval, .executingTool, .thinking:
+      return true
+    default:
+      return false
+    }
   }
 
   // MARK: - Header
@@ -61,24 +87,46 @@ public struct MonitoringCardView: View {
     HStack {
       // Session ID
       Text(session.shortId)
-        .font(.system(.caption, design: .monospaced))
+        .font(.system(.subheadline, design: .monospaced))
         .foregroundColor(.brandPrimary)
-        .fontWeight(.medium)
+        .fontWeight(.semibold)
 
       // Branch name
       if let branch = session.branchName {
         Text("[\(branch)]")
-          .font(.caption)
+          .font(.subheadline)
           .foregroundColor(.secondary)
       }
 
       Spacer()
+
+      // Code changes button
+      if let codeChangesState, codeChangesState.changeCount > 0 {
+        Button(action: {
+          codeChangesSheetItem = CodeChangesSheetItem(
+            session: session,
+            codeChangesState: codeChangesState
+          )
+        }) {
+          HStack(spacing: 4) {
+            Image(systemName: "chevron.left.forwardslash.chevron.right")
+              .font(.caption)
+            Text("\(codeChangesState.changeCount)")
+              .font(.system(.caption2, design: .rounded))
+          }
+          .foregroundColor(.brandPrimary)
+          .agentHubChip()
+        }
+        .buttonStyle(.plain)
+        .help("View code changes")
+      }
 
       // Connect button
       Button(action: onConnect) {
         Image(systemName: "terminal")
           .font(.caption)
           .foregroundColor(.brandPrimary)
+          .agentHubChip()
       }
       .buttonStyle(.plain)
       .help("Open in Terminal")
@@ -88,23 +136,10 @@ public struct MonitoringCardView: View {
         Image(systemName: "xmark.circle.fill")
           .font(.caption)
           .foregroundColor(.secondary)
+          .agentHubChip()
       }
       .buttonStyle(.plain)
       .help("Stop monitoring")
-    }
-  }
-
-  // MARK: - Status Border
-
-  private var statusBorderColor: Color {
-    guard let state = state else { return .clear }
-    switch state.status {
-    case .awaitingApproval:
-      return .yellow.opacity(0.5)
-    case .executingTool, .thinking:
-      return .orange.opacity(0.3)
-    default:
-      return .clear
     }
   }
 }

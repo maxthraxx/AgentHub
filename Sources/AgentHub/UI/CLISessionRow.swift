@@ -37,8 +37,9 @@ public struct CLISessionRow: View {
 
   public var body: some View {
     sessionRowContent
-      .padding(.vertical, 6)
-      .padding(.horizontal, 8)
+      .padding(.vertical, 8)
+      .padding(.horizontal, 10)
+      .agentHubRow(isHighlighted: session.isActive)
   }
 
   // MARK: - Session Row Content
@@ -48,7 +49,7 @@ public struct CLISessionRow: View {
       // Activity indicator
       Circle()
         .fill(statusColor)
-        .frame(width: 6, height: 6)
+        .frame(width: 8, height: 8)
 
       VStack(alignment: .leading, spacing: 4) {
         // Session ID (prominently displayed)
@@ -90,9 +91,9 @@ public struct CLISessionRow: View {
     HStack(spacing: 6) {
       // Short session ID with monospace font
       Text(session.shortId)
-        .font(.system(.caption, design: .monospaced))
+        .font(.system(.subheadline, design: .monospaced))
         .foregroundColor(.brandPrimary)
-        .fontWeight(.medium)
+        .fontWeight(.semibold)
 
       // Copy button
       Button(action: onCopyId) {
@@ -153,11 +154,9 @@ public struct CLISessionRow: View {
       Image(systemName: isMonitoring ? "eye.fill" : "eye")
         .font(.caption)
         .foregroundColor(isMonitoring ? .brandPrimary : .secondary)
+        .agentHubChip(isActive: isMonitoring)
     }
     .buttonStyle(.plain)
-    .padding(6)
-    .background(isMonitoring ? Color.brandPrimary.opacity(0.1) : Color.clear)
-    .cornerRadius(4)
     .help(isMonitoring ? "Stop monitoring" : "Monitor session")
   }
 
@@ -168,6 +167,7 @@ public struct CLISessionRow: View {
       Image(systemName: "terminal")
         .font(.caption)
         .foregroundColor(.brandPrimary)
+        .agentHubChip()
     }
     .buttonStyle(.plain)
     .help("Open in Terminal")
