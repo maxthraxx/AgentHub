@@ -97,6 +97,14 @@ public struct CLIWorktreeBranchRow: View {
 
           Spacer()
 
+          // Session count
+          if !worktree.sessions.isEmpty {
+            Text("\(worktree.sessions.count)")
+              .font(.caption)
+              .foregroundColor(worktree.activeSessionCount > 0 ? .brandPrimary : .secondary)
+              .agentHubChip(isActive: worktree.activeSessionCount > 0)
+          }
+
           // Open terminal button
           Button(action: onOpenTerminal) {
             Image(systemName: "terminal")
@@ -106,14 +114,6 @@ public struct CLIWorktreeBranchRow: View {
           }
           .buttonStyle(.plain)
           .help("Start Claude in Terminal")
-
-          // Session count
-          if !worktree.sessions.isEmpty {
-            Text("\(worktree.sessions.count)")
-              .font(.caption)
-              .foregroundColor(worktree.activeSessionCount > 0 ? .brandPrimary : .secondary)
-              .agentHubChip(isActive: worktree.activeSessionCount > 0)
-          }
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 4)
