@@ -103,6 +103,100 @@ The `CLISessionsListView` provides the complete UI - a split view with repositor
 - Alert sound when a tool awaits approval (configurable 5-second timeout)
 - Visual status indicators
 
+### Global Stats Display
+
+AgentHub can display global Claude Code statistics (total tokens, cost, sessions across all repos) in two modes:
+
+#### Menu Bar Mode (Default)
+
+Stats appear as a menu bar extra in the system menu bar:
+
+```swift
+@main
+struct YourApp: App {
+  @State private var statsService = GlobalStatsService()
+  @State private var displaySettings = StatsDisplaySettings() // defaults to .menuBar
+
+  var body: some Scene {
+    WindowGroup {
+      ContentView(
+        statsService: statsService,
+        displaySettings: displaySettings
+      )
+    }
+
+    MenuBarExtra(
+      isInserted: Binding(
+        get: { displaySettings.isMenuBarMode },
+        set: { _ in }
+      )
+    ) {
+      GlobalStatsMenuView(service: statsService)
+    } label: {
+      HStack(spacing: 4) {
+        Image(systemName: "sparkle")
+        Text(statsService.formattedTotalTokens)
+      }
+    }
+    .menuBarExtraStyle(.window)
+  }
+}
+```
+
+#### Popover Mode
+
+Stats appear as a toolbar button in the top-right corner of the app window:
+
+```swift
+@main
+struct YourApp: App {
+  @State private var statsService = GlobalStatsService()
+  @State private var displaySettings = StatsDisplaySettings(defaultMode: .popover)
+
+  var body: some Scene {
+    WindowGroup {
+      ContentView(
+        statsService: statsService,
+        displaySettings: displaySettings
+      )
+      .toolbar(removing: .title)
+    }
+  }
+}
+
+// In ContentView:
+var body: some View {
+  CLISessionsListView(viewModel: viewModel)
+    .toolbar {
+      ToolbarItem(placement: .principal) {
+        HStack {
+          Spacer()
+          if let settings = displaySettings,
+             settings.isPopoverMode,
+             let service = statsService {
+            GlobalStatsPopoverButton(service: service)
+          }
+        }
+        .frame(maxWidth: .infinity)
+      }
+    }
+}
+```
+
+#### Configuration
+
+The display mode is controlled by `StatsDisplaySettings`:
+
+```swift
+// Menu bar mode (default)
+let settings = StatsDisplaySettings()
+
+// Popover mode
+let settings = StatsDisplaySettings(defaultMode: .popover)
+```
+
+The setting persists via UserDefaults with key `"StatsDisplayMode"`.
+
 ## Session States
 
 | Status | Description |
