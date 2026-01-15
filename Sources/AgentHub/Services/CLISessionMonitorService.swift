@@ -141,7 +141,7 @@ public actor CLISessionMonitorService {
 
     // Parse history for selected paths only
     print("[CLIMonitorService] Parsing history...")
-    let historyEntries = parseHistoryForPaths(allPaths)
+    let historyEntries = await parseHistoryForPaths(allPaths)
     print("[CLIMonitorService] Found \(historyEntries.count) history entries")
 
     // Group entries by session ID
@@ -262,32 +262,35 @@ public actor CLISessionMonitorService {
   // MARK: - Filtered History Parsing
 
   /// Parses history.jsonl and filters to only entries matching selected paths
-  private func parseHistoryForPaths(_ paths: Set<String>) -> [HistoryEntry] {
+  /// Uses Task.detached to run heavy I/O and parsing off the actor's isolation context
+  private func parseHistoryForPaths(_ paths: Set<String>) async -> [HistoryEntry] {
     let historyPath = claudeDataPath + "/history.jsonl"
 
-    guard let data = FileManager.default.contents(atPath: historyPath),
-          let content = String(data: data, encoding: .utf8) else {
-      return []
-    }
-
-    let decoder = JSONDecoder()
-
-    return content
-      .components(separatedBy: .newlines)
-      .compactMap { line -> HistoryEntry? in
-        guard !line.isEmpty,
-              let jsonData = line.data(using: .utf8),
-              let entry = try? decoder.decode(HistoryEntry.self, from: jsonData) else {
-          return nil
-        }
-
-        // Only include entries that match a selected path
-        let matchesPath = paths.contains { path in
-          entry.project.hasPrefix(path) || entry.project == path
-        }
-
-        return matchesPath ? entry : nil
+    return await Task.detached(priority: .userInitiated) {
+      guard let data = FileManager.default.contents(atPath: historyPath),
+            let content = String(data: data, encoding: .utf8) else {
+        return []
       }
+
+      let decoder = JSONDecoder()
+
+      return content
+        .components(separatedBy: .newlines)
+        .compactMap { line -> HistoryEntry? in
+          guard !line.isEmpty,
+                let jsonData = line.data(using: .utf8),
+                let entry = try? decoder.decode(HistoryEntry.self, from: jsonData) else {
+            return nil
+          }
+
+          // Only include entries that match a selected path
+          let matchesPath = paths.contains { path in
+            entry.project.hasPrefix(path) || entry.project == path
+          }
+
+          return matchesPath ? entry : nil
+        }
+    }.value
   }
 
   // MARK: - Legacy Support (for backwards compatibility)
