@@ -60,6 +60,13 @@ public final class CLISessionsViewModel {
     searchFilterPath != nil
   }
 
+  // MARK: - Auto-Observe State
+
+  /// Session ID pending auto-observe after repo loads
+  private var pendingAutoObserveSessionId: String? = nil
+  /// Project path for the pending auto-observe session
+  private var pendingAutoObserveProjectPath: String? = nil
+
   // MARK: - Monitoring State
 
   /// Set of session IDs currently being monitored
@@ -141,6 +148,9 @@ public final class CLISessionsViewModel {
         await MainActor.run { [weak self] in
           guard let self = self else { return }
           self.selectedRepositories = repositories
+
+          // Check for pending auto-observe
+          self.processPendingAutoObserve()
         }
       }
     }
@@ -523,13 +533,58 @@ public final class CLISessionsViewModel {
   /// Called when user selects a search result - adds the repo and clears search
   /// - Parameter result: The selected search result
   public func selectSearchResult(_ result: SessionSearchResult) {
+    let sessionId = result.id
+    let projectPath = result.projectPath
+
+    // Store for auto-observe
+    pendingAutoObserveSessionId = sessionId
+    pendingAutoObserveProjectPath = projectPath
+
     // Add the repository if not already present
-    if !selectedRepositories.contains(where: { $0.path == result.projectPath }) {
-      addRepository(at: result.projectPath)
+    if !selectedRepositories.contains(where: { $0.path == projectPath }) {
+      addRepository(at: projectPath)
+    } else {
+      // Repo already exists - process immediately
+      processPendingAutoObserve()
     }
 
     // Clear search
     clearSearch()
+  }
+
+  /// Processes pending auto-observe: finds the session, expands its container, and starts monitoring
+  private func processPendingAutoObserve() {
+    guard let sessionId = pendingAutoObserveSessionId,
+          let projectPath = pendingAutoObserveProjectPath else {
+      return
+    }
+
+    // Clear pending state
+    pendingAutoObserveSessionId = nil
+    pendingAutoObserveProjectPath = nil
+
+    // Find the repository containing this project path
+    guard let repoIndex = selectedRepositories.firstIndex(where: {
+      $0.path == projectPath || $0.worktrees.contains { $0.path == projectPath }
+    }) else {
+      return
+    }
+
+    // Expand the repository
+    selectedRepositories[repoIndex].isExpanded = true
+
+    // Find the worktree containing the session
+    for worktreeIndex in selectedRepositories[repoIndex].worktrees.indices {
+      let worktree = selectedRepositories[repoIndex].worktrees[worktreeIndex]
+      if let session = worktree.sessions.first(where: { $0.id == sessionId }) {
+        // Expand the worktree
+        selectedRepositories[repoIndex].worktrees[worktreeIndex].isExpanded = true
+
+        // Start monitoring the session
+        startMonitoring(session: session)
+        return
+      }
+    }
   }
 
   // MARK: - Search Filter
