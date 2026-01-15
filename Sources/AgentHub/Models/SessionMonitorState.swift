@@ -239,6 +239,62 @@ extension CodeChangeInput {
   }
 }
 
+// MARK: - ConsolidatedFileChange
+
+/// Represents all changes to a single file, consolidated into one entry
+public struct ConsolidatedFileChange: Identifiable, Equatable, Sendable {
+  public let id: UUID
+  public let filePath: String
+  public let operations: [FileOperation]
+  public let firstTimestamp: Date
+  public let lastTimestamp: Date
+
+  public var fileName: String {
+    URL(fileURLWithPath: filePath).lastPathComponent
+  }
+
+  public var operationCount: Int {
+    operations.count
+  }
+
+  public var operationSummary: String {
+    let counts = Dictionary(grouping: operations) { $0.input.toolType }
+      .mapValues { $0.count }
+    return counts.map { "\($0.value) \($0.key.rawValue)" }
+      .sorted()
+      .joined(separator: ", ")
+  }
+
+  public init(
+    id: UUID = UUID(),
+    filePath: String,
+    operations: [FileOperation],
+    firstTimestamp: Date,
+    lastTimestamp: Date
+  ) {
+    self.id = id
+    self.filePath = filePath
+    self.operations = operations
+    self.firstTimestamp = firstTimestamp
+    self.lastTimestamp = lastTimestamp
+  }
+}
+
+// MARK: - FileOperation
+
+/// A single file operation within a consolidated change
+public struct FileOperation: Identifiable, Equatable, Sendable {
+  public let id: UUID
+  public let timestamp: Date
+  public let input: CodeChangeInput
+
+  public init(id: UUID, timestamp: Date, input: CodeChangeInput) {
+    self.id = id
+    self.timestamp = timestamp
+    self.input = input
+  }
+}
+
 // MARK: - ActivityType
 
 public enum ActivityType: Equatable, Sendable {

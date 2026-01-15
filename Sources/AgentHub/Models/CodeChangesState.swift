@@ -24,6 +24,22 @@ public struct CodeChangesState: Equatable, Sendable {
     changes.count
   }
 
+  /// Changes consolidated by file path (one entry per file)
+  public var consolidatedChanges: [ConsolidatedFileChange] {
+    let grouped = Dictionary(grouping: changes) { $0.input.filePath }
+
+    return grouped.map { (filePath, entries) in
+      let sorted = entries.sorted { $0.timestamp < $1.timestamp }
+      return ConsolidatedFileChange(
+        filePath: filePath,
+        operations: sorted.map { FileOperation(id: $0.id, timestamp: $0.timestamp, input: $0.input) },
+        firstTimestamp: sorted.first!.timestamp,
+        lastTimestamp: sorted.last!.timestamp
+      )
+    }
+    .sorted { $0.lastTimestamp > $1.lastTimestamp }
+  }
+
   public init(changes: [CodeChangeEntry]) {
     self.changes = changes
   }

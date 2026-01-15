@@ -16,7 +16,7 @@ public struct CodeChangesView: View {
   let codeChangesState: CodeChangesState
   let onDismiss: () -> Void
 
-  @State private var selectedChangeId: UUID?
+  @State private var selectedFileId: UUID?
   @State private var diffInputs: [UUID: DiffInputData] = [:]
   @State private var loadingStates: [UUID: Bool] = [:]
   @State private var errorMessages: [UUID: String] = [:]
@@ -41,7 +41,7 @@ public struct CodeChangesView: View {
       Divider()
 
       // Content
-      if codeChangesState.changes.isEmpty {
+      if codeChangesState.consolidatedChanges.isEmpty {
         emptyState
       } else {
         HSplitView {
@@ -57,10 +57,10 @@ public struct CodeChangesView: View {
     .frame(minWidth: 1200, idealWidth: .infinity, maxWidth: .infinity,
            minHeight: 800, idealHeight: .infinity, maxHeight: .infinity)
     .onAppear {
-      // Auto-select first change
-      if selectedChangeId == nil, let first = codeChangesState.changes.first {
-        selectedChangeId = first.id
-        loadDiff(for: first)
+      // Auto-select first file
+      if selectedFileId == nil, let first = codeChangesState.consolidatedChanges.first {
+        selectedFileId = first.id
+        loadConsolidatedDiff(for: first)
       }
     }
   }
@@ -77,7 +77,7 @@ public struct CodeChangesView: View {
         Text("Code Changes")
           .font(.title3.weight(.semibold))
 
-        Text("(\(codeChangesState.changeCount))")
+        Text("(\(codeChangesState.consolidatedChanges.count) files)")
           .font(.title3)
           .foregroundColor(.secondary)
       }
@@ -146,13 +146,13 @@ public struct CodeChangesView: View {
       // File list
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 4) {
-          ForEach(codeChangesState.changes) { change in
-            CodeChangeRow(
-              change: change,
-              isSelected: selectedChangeId == change.id,
+          ForEach(codeChangesState.consolidatedChanges) { consolidated in
+            ConsolidatedFileRow(
+              change: consolidated,
+              isSelected: selectedFileId == consolidated.id,
               onSelect: {
-                selectedChangeId = change.id
-                loadDiff(for: change)
+                selectedFileId = consolidated.id
+                loadConsolidatedDiff(for: consolidated)
               }
             )
           }
@@ -166,7 +166,7 @@ public struct CodeChangesView: View {
 
   @ViewBuilder
   private var diffViewer: some View {
-    if let selectedId = selectedChangeId {
+    if let selectedId = selectedFileId {
       if loadingStates[selectedId] == true {
         // Loading state
         VStack {
@@ -212,135 +212,117 @@ public struct CodeChangesView: View {
     }
   }
 
-  // MARK: - Load Diff
+  // MARK: - Load Consolidated Diff
 
-  private func loadDiff(for change: CodeChangeEntry) {
+  private func loadConsolidatedDiff(for consolidated: ConsolidatedFileChange) {
     // Skip if already loaded
-    if diffInputs[change.id] != nil { return }
+    if diffInputs[consolidated.id] != nil { return }
 
-    loadingStates[change.id] = true
+    loadingStates[consolidated.id] = true
 
     Task {
       do {
-        let diffData = try await generateDiffData(for: change.input, projectPath: session.projectPath)
+        let diffData = try await generateConsolidatedDiffData(for: consolidated, projectPath: session.projectPath)
         await MainActor.run {
-          diffInputs[change.id] = diffData
-          loadingStates[change.id] = false
+          diffInputs[consolidated.id] = diffData
+          loadingStates[consolidated.id] = false
         }
       } catch {
         await MainActor.run {
-          errorMessages[change.id] = error.localizedDescription
-          loadingStates[change.id] = false
+          errorMessages[consolidated.id] = error.localizedDescription
+          loadingStates[consolidated.id] = false
         }
       }
     }
   }
 
-  private func generateDiffData(
-    for input: CodeChangeInput,
+  private func generateConsolidatedDiffData(
+    for consolidated: ConsolidatedFileChange,
     projectPath: String
   ) async throws -> DiffInputData {
-    // Try to read full file and apply edits for proper line numbers
-    // Fall back to snippets if file can't be read
     let fileReader = DefaultFileDataReader(projectPath: projectPath)
 
-    switch input.toolType {
-    case .edit:
-      // The file on disk is the CURRENT version (after Claude's edit)
-      // We need to reconstruct the ORIGINAL by replacing newString back with oldString
-      if let currentFileContent = try? await fileReader.readFileContent(in: [input.filePath], maxTasks: 1).values.first,
-         let oldString = input.oldString,
-         let newString = input.newString {
-        // Reconstruct original content by finding newString and replacing with oldString
-        let originalContent: String
-        if input.replaceAll == true {
-          originalContent = currentFileContent.replacingOccurrences(of: newString, with: oldString)
-        } else if let range = currentFileContent.range(of: newString) {
-          originalContent = currentFileContent.replacingCharacters(in: range, with: oldString)
-        } else {
-          // newString not found in file - fall back to snippet mode
-          return DiffInputData(
-            oldContent: oldString,
-            newContent: newString,
-            fileName: input.filePath
-          )
-        }
-        return DiffInputData(
-          oldContent: originalContent,    // Reconstructed original (full file)
-          newContent: currentFileContent, // Current file as-is (full file)
-          fileName: input.filePath
-        )
-      } else {
-        // File read failed - fall back to snippet mode
-        return DiffInputData(
-          oldContent: input.oldString ?? "",
-          newContent: input.newString ?? "",
-          fileName: input.filePath
-        )
-      }
-
-    case .write:
-      // Try to read existing file content
-      if let fileContent = try? await fileReader.readFileContent(in: [input.filePath], maxTasks: 1).values.first {
-        // Existing file - show full diff
-        return DiffInputData(
-          oldContent: fileContent,
-          newContent: input.newString ?? "",
-          fileName: input.filePath
-        )
-      } else {
-        // New file - empty original
+    // Read current file from disk (final state after all edits)
+    guard let currentFileContent = try? await fileReader.readFileContent(
+      in: [consolidated.filePath],
+      maxTasks: 1
+    ).values.first else {
+      // File doesn't exist on disk - check if first operation was Write (new file)
+      if let firstOp = consolidated.operations.first,
+         firstOp.input.toolType == .write {
+        // New file - show empty -> final content
         return DiffInputData(
           oldContent: "",
-          newContent: input.newString ?? "",
-          fileName: input.filePath
+          newContent: firstOp.input.newString ?? "",
+          fileName: consolidated.filePath
         )
       }
+      // Fall back to snippet mode using first/last operation
+      return fallbackSnippetDiff(for: consolidated)
+    }
+
+    // Reconstruct original content by reversing ALL operations
+    var originalContent = currentFileContent
+
+    // Process operations in REVERSE order (newest to oldest)
+    for operation in consolidated.operations.reversed() {
+      originalContent = reverseOperation(operation.input, in: originalContent)
+    }
+
+    return DiffInputData(
+      oldContent: originalContent,
+      newContent: currentFileContent,
+      fileName: consolidated.filePath
+    )
+  }
+
+  /// Reverses a single operation to reconstruct previous state
+  private func reverseOperation(_ input: CodeChangeInput, in content: String) -> String {
+    switch input.toolType {
+    case .edit:
+      guard let oldString = input.oldString,
+            let newString = input.newString else { return content }
+
+      if input.replaceAll == true {
+        return content.replacingOccurrences(of: newString, with: oldString)
+      } else if let range = content.range(of: newString) {
+        return content.replacingCharacters(in: range, with: oldString)
+      }
+      return content
+
+    case .write:
+      // Write replaces entire file - we can't reconstruct previous content
+      // The diff will show from when the Write happened
+      return ""
 
     case .multiEdit:
-      // The file on disk is the CURRENT version (after all edits)
-      // We need to reconstruct the ORIGINAL by reversing all edits
-      if let currentFileContent = try? await fileReader.readFileContent(in: [input.filePath], maxTasks: 1).values.first,
-         let edits = input.edits {
-        // Reverse edits: replace newString back with oldString
-        // Process in reverse order to handle overlapping edits correctly
-        var originalContent = currentFileContent
-        for edit in edits.reversed() {
-          guard let oldString = edit["old_string"],
-                let newString = edit["new_string"] else { continue }
-          let replaceAll = edit["replace_all"] == "true"
-          if replaceAll {
-            originalContent = originalContent.replacingOccurrences(of: newString, with: oldString)
-          } else if let range = originalContent.range(of: newString) {
-            originalContent = originalContent.replacingCharacters(in: range, with: oldString)
-          }
+      var result = content
+      // Reverse each edit within MultiEdit in reverse order
+      for edit in (input.edits ?? []).reversed() {
+        guard let oldString = edit["old_string"],
+              let newString = edit["new_string"] else { continue }
+        let replaceAll = edit["replace_all"] == "true"
+
+        if replaceAll {
+          result = result.replacingOccurrences(of: newString, with: oldString)
+        } else if let range = result.range(of: newString) {
+          result = result.replacingCharacters(in: range, with: oldString)
         }
-        return DiffInputData(
-          oldContent: originalContent,    // Reconstructed original (full file)
-          newContent: currentFileContent, // Current file as-is (full file)
-          fileName: input.filePath
-        )
-      } else {
-        // Fall back to snippet concatenation
-        var oldContent = ""
-        var newContent = ""
-        if let edits = input.edits {
-          for (index, edit) in edits.enumerated() {
-            if index > 0 {
-              oldContent += "\n...\n"
-              newContent += "\n...\n"
-            }
-            oldContent += edit["old_string"] ?? ""
-            newContent += edit["new_string"] ?? ""
-          }
-        }
-        return DiffInputData(
-          oldContent: oldContent,
-          newContent: newContent,
-          fileName: input.filePath
-        )
       }
+      return result
     }
+  }
+
+  /// Fallback when file can't be read - use first operation's old content and last operation's new content
+  private func fallbackSnippetDiff(for consolidated: ConsolidatedFileChange) -> DiffInputData {
+    let firstOp = consolidated.operations.first?.input
+    let lastOp = consolidated.operations.last?.input
+
+    return DiffInputData(
+      oldContent: firstOp?.oldString ?? "",
+      newContent: lastOp?.newString ?? "",
+      fileName: consolidated.filePath
+    )
   }
 }
 
@@ -474,20 +456,20 @@ private struct DiffViewWithHeader: View {
   }
 }
 
-// MARK: - CodeChangeRow
+// MARK: - ConsolidatedFileRow
 
-private struct CodeChangeRow: View {
-  let change: CodeChangeEntry
+private struct ConsolidatedFileRow: View {
+  let change: ConsolidatedFileChange
   let isSelected: Bool
   let onSelect: () -> Void
 
   var body: some View {
     Button(action: onSelect) {
       HStack(spacing: 8) {
-        // Tool type icon
-        Image(systemName: toolIcon)
+        // File icon
+        Image(systemName: "doc.text")
           .font(.caption)
-          .foregroundColor(toolColor)
+          .foregroundColor(.blue)
           .frame(width: 16)
 
         VStack(alignment: .leading, spacing: 2) {
@@ -497,13 +479,23 @@ private struct CodeChangeRow: View {
             .fontWeight(.medium)
             .lineLimit(1)
 
-          // Timestamp
-          Text(formatTime(change.timestamp))
+          // Operation summary
+          Text(change.operationSummary)
             .font(.caption2)
             .foregroundColor(.secondary)
         }
 
         Spacer()
+
+        // Operation count badge (only show if > 1)
+        if change.operationCount > 1 {
+          Text("\(change.operationCount)")
+            .font(.caption2.bold())
+            .foregroundColor(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.brandPrimary))
+        }
       }
       .padding(.horizontal, 8)
       .padding(.vertical, 6)
@@ -517,28 +509,6 @@ private struct CodeChangeRow: View {
       )
     }
     .buttonStyle(.plain)
-  }
-
-  private var toolIcon: String {
-    switch change.input.toolType {
-    case .edit: return "pencil"
-    case .write: return "doc.badge.plus"
-    case .multiEdit: return "pencil.and.list.clipboard"
-    }
-  }
-
-  private var toolColor: Color {
-    switch change.input.toolType {
-    case .edit: return .orange
-    case .write: return .blue
-    case .multiEdit: return .purple
-    }
-  }
-
-  private func formatTime(_ date: Date) -> String {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "HH:mm:ss"
-    return formatter.string(from: date)
   }
 }
 
@@ -556,6 +526,7 @@ private struct CodeChangeRow: View {
       isActive: true
     ),
     codeChangesState: CodeChangesState(changes: [
+      // Multiple edits to same file - will be consolidated
       CodeChangeEntry(
         id: UUID(),
         timestamp: Date().addingTimeInterval(-60),
@@ -566,6 +537,17 @@ private struct CodeChangeRow: View {
           newString: "let x = 2"
         )
       ),
+      CodeChangeEntry(
+        id: UUID(),
+        timestamp: Date().addingTimeInterval(-45),
+        input: CodeChangeInput(
+          toolType: .edit,
+          filePath: "/Users/test/project/src/main.swift",
+          oldString: "let y = 1",
+          newString: "let y = 2"
+        )
+      ),
+      // Different file
       CodeChangeEntry(
         id: UUID(),
         timestamp: Date().addingTimeInterval(-30),
