@@ -32,7 +32,6 @@ public struct GitWorktreeInfo: Sendable {
 }
 
 /// Utility for detecting and analyzing git worktrees
-@MainActor
 public class GitWorktreeDetector {
   /// Maximum time to wait for git commands (in seconds)
   private static let gitCommandTimeout: TimeInterval = 3.0
@@ -92,20 +91,38 @@ public class GitWorktreeDetector {
     do {
       try process.run()
 
-      // Add timeout to prevent hanging
-      let timeoutTask = Task {
-        try await Task.sleep(nanoseconds: UInt64(gitCommandTimeout * 1_000_000_000))
-        if process.isRunning {
-          process.terminate()
-          print("Git branch command timed out after \(gitCommandTimeout) seconds")
+      // Wait for process with timeout using async terminationHandler (non-blocking)
+      let didTimeout = await withTaskGroup(of: Bool.self) { group in
+        // Task 1: Wait for process completion via terminationHandler
+        group.addTask {
+          await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            process.terminationHandler = { _ in
+              continuation.resume(returning: false)
+            }
+          }
         }
+
+        // Task 2: Timeout
+        group.addTask {
+          do {
+            try await Task.sleep(for: .seconds(Self.gitCommandTimeout))
+            if process.isRunning {
+              process.terminate()
+              print("Git branch command timed out after \(Self.gitCommandTimeout) seconds")
+            }
+            return true
+          } catch {
+            return false
+          }
+        }
+
+        let result = await group.next() ?? false
+        group.cancelAll()
+        return result
       }
 
-      process.waitUntilExit()
-      timeoutTask.cancel()
-
       // Check if process was terminated due to timeout
-      if process.terminationStatus == SIGTERM {
+      if didTimeout || process.terminationStatus == SIGTERM {
         return nil
       }
 
@@ -158,20 +175,38 @@ public class GitWorktreeDetector {
     do {
       try process.run()
 
-      // Add timeout to prevent hanging
-      let timeoutTask = Task {
-        try await Task.sleep(nanoseconds: UInt64(gitCommandTimeout * 1_000_000_000))
-        if process.isRunning {
-          process.terminate()
-          print("Git worktree list command timed out after \(gitCommandTimeout) seconds")
+      // Wait for process with timeout using async terminationHandler (non-blocking)
+      let didTimeout = await withTaskGroup(of: Bool.self) { group in
+        // Task 1: Wait for process completion via terminationHandler
+        group.addTask {
+          await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            process.terminationHandler = { _ in
+              continuation.resume(returning: false)
+            }
+          }
         }
+
+        // Task 2: Timeout
+        group.addTask {
+          do {
+            try await Task.sleep(for: .seconds(Self.gitCommandTimeout))
+            if process.isRunning {
+              process.terminate()
+              print("Git worktree list command timed out after \(Self.gitCommandTimeout) seconds")
+            }
+            return true
+          } catch {
+            return false
+          }
+        }
+
+        let result = await group.next() ?? false
+        group.cancelAll()
+        return result
       }
 
-      process.waitUntilExit()
-      timeoutTask.cancel()
-
       // Check if process was terminated due to timeout
-      if process.terminationStatus == SIGTERM {
+      if didTimeout || process.terminationStatus == SIGTERM {
         print("Git worktree list timed out for path: \(repoPath)")
         return []
       }
