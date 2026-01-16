@@ -16,7 +16,7 @@ let package = Package(
   ],
   dependencies: [
     .package(url: "https://github.com/jamesrochabrun/ClaudeCodeSDK", exact: "1.2.4"),
-    .package(url: "https://github.com/jamesrochabrun/PierreDiffsSwift", branch: "main"),
+    .package(url: "https://github.com/jamesrochabrun/PierreDiffsSwift", exact: "1.1.4"),
   ],
   targets: [
     .target(
