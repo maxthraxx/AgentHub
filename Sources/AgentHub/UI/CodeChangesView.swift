@@ -348,38 +348,69 @@ private struct DiffViewWithHeader: View {
 
   @State private var webViewOpacity: Double = 1.0
   @State private var isWebViewReady = false
+  @State private var inlineEditorState = InlineEditorState()
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       // Header with file info and controls
       headerView
 
-      // Diff view with loading skeleton
-      ZStack {
-        PierreDiffView(
-          oldContent: oldContent,
-          newContent: newContent,
-          fileName: fileName,
-          diffStyle: $diffStyle,
-          overflowMode: $overflowMode,
-          onReady: {
-            withAnimation(.easeInOut(duration: 0.3)) {
-              isWebViewReady = true
-            }
-          }
-        )
-        .opacity(isWebViewReady ? webViewOpacity : 0)
+      // Diff view with inline editor overlay - both in same coordinate space
+      GeometryReader { geometry in
+        ZStack {
+          PierreDiffView(
+            oldContent: oldContent,
+            newContent: newContent,
+            fileName: fileName,
+            diffStyle: $diffStyle,
+            overflowMode: $overflowMode,
+            onLineClickWithPosition: { position, localPoint in
+              // localPoint is already in SwiftUI-compatible coordinates (origin at top-left)
+              print("[CodeChangesView] Received localPoint: \(localPoint)")
+              print("[CodeChangesView] GeometryReader size: \(geometry.size)")
 
-        if !isWebViewReady {
-          VStack(spacing: 12) {
-            ProgressView()
-              .controlSize(.small)
-            Text("Loading diff...")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+              // Use localPoint.y directly - already converted to top-left origin
+              let anchorPoint = CGPoint(x: geometry.size.width / 2, y: localPoint.y)
+              print("[CodeChangesView] anchorPoint: \(anchorPoint)")
+
+              withAnimation(.easeOut(duration: 0.2)) {
+                inlineEditorState.show(
+                  at: anchorPoint,
+                  lineNumber: position.lineNumber,
+                  side: position.side,
+                  fileName: fileName
+                )
+              }
+            },
+            onReady: {
+              withAnimation(.easeInOut(duration: 0.3)) {
+                isWebViewReady = true
+              }
+            }
+          )
+          .opacity(isWebViewReady ? webViewOpacity : 0)
+
+          if !isWebViewReady {
+            VStack(spacing: 12) {
+              ProgressView()
+                .controlSize(.small)
+              Text("Loading diff...")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .transition(.opacity)
           }
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-          .transition(.opacity)
+
+          // Inline editor overlay - in same coordinate space as WebView
+          InlineEditorOverlay(
+            state: inlineEditorState,
+            containerSize: geometry.size,
+            onSubmit: { message, lineNumber, side, file in
+              // MVP: Print message to console (Claude integration later)
+              print("[InlineEditor] Line \(lineNumber) (\(side)) in \(file): \(message)")
+            }
+          )
         }
       }
       .animation(.easeInOut(duration: 0.3), value: isWebViewReady)
