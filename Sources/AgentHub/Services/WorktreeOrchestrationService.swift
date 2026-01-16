@@ -88,20 +88,17 @@ public final class WorktreeOrchestrationService {
           try? await Task.sleep(for: .milliseconds(800))
         }
 
-        // Refresh UI after each session (progressive updates)
-        await monitorService.refreshSessions()
-
       } catch {
         print("[Orchestration] Failed to create worktree for \(session.branchName): \(error)")
         errors.append("\(session.branchName): \(error.localizedDescription)")
       }
     }
 
-    // Expand the repository in the UI
-    let repositories = await monitorService.getSelectedRepositories()
-    if let repo = repositories.first(where: { $0.path == plan.modulePath }) {
-      await expandRepository(repo)
-    }
+    // Poll for sessions to appear in UI (also handles expansion)
+    await pollForNewSessions(
+      branchNames: plan.sessions.map { $0.branchName },
+      repositoryPath: plan.modulePath
+    )
 
     onProgress?(.completed(
       successCount: createdPaths.count,
@@ -163,21 +160,62 @@ public final class WorktreeOrchestrationService {
     }
   }
 
-  private func expandRepository(_ repository: SelectedRepository) async {
-    // Get current repositories and find the one to expand
-    var repositories = await monitorService.getSelectedRepositories()
+  /// Polls for sessions to appear after worktree creation and expands worktrees when found
+  private func pollForNewSessions(
+    branchNames: [String],
+    repositoryPath: String
+  ) async {
+    let maxWaitTime: Double = 10.0  // seconds
+    let pollInterval: Double = 0.5  // seconds
+    let startTime = Date()
+    var foundBranches: Set<String> = []
 
-    if let index = repositories.firstIndex(where: { $0.id == repository.id }) {
-      repositories[index].isExpanded = true
+    while Date().timeIntervalSince(startTime) < maxWaitTime {
+      await monitorService.refreshSessions()
 
-      // Expand all worktrees
-      for i in repositories[index].worktrees.indices {
-        repositories[index].worktrees[i].isExpanded = true
+      // Get fresh repositories and check for sessions
+      var repositories = await monitorService.getSelectedRepositories()
+      var needsUpdate = false
+
+      if let repoIndex = repositories.firstIndex(where: { $0.path == repositoryPath }) {
+        // Expand the repository itself
+        if !repositories[repoIndex].isExpanded {
+          repositories[repoIndex].isExpanded = true
+          needsUpdate = true
+        }
+
+        for worktreeIndex in repositories[repoIndex].worktrees.indices {
+          let worktree = repositories[repoIndex].worktrees[worktreeIndex]
+          if branchNames.contains(worktree.name) && !worktree.sessions.isEmpty {
+            foundBranches.insert(worktree.name)
+
+            // Expand the worktree when sessions are found
+            if !repositories[repoIndex].worktrees[worktreeIndex].isExpanded {
+              repositories[repoIndex].worktrees[worktreeIndex].isExpanded = true
+              needsUpdate = true
+            }
+          }
+        }
+
+        // Update state if any expansion changed
+        if needsUpdate {
+          await monitorService.setSelectedRepositories(repositories)
+        }
       }
 
-      // Update the repositories in the monitor service
-      await monitorService.setSelectedRepositories(repositories)
+      onProgress?(.waitingForSessions(found: foundBranches.count, total: branchNames.count))
+
+      if foundBranches.count == branchNames.count {
+        print("[Orchestration] ✅ All \(branchNames.count) sessions detected and expanded")
+        return
+      }
+
+      try? await Task.sleep(for: .milliseconds(Int(pollInterval * 1000)))
     }
+
+    // Final refresh on timeout
+    await monitorService.refreshSessions()
+    print("[Orchestration] ⚠️ Timeout: Found \(foundBranches.count)/\(branchNames.count) sessions")
   }
 }
 
@@ -188,6 +226,7 @@ public enum OrchestrationProgress {
   case starting(sessionCount: Int)
   case creatingWorktree(index: Int, total: Int, branchName: String)
   case launchingSession(index: Int, total: Int, branchName: String)
+  case waitingForSessions(found: Int, total: Int)
   case completed(successCount: Int, errorCount: Int)
 
   public var message: String {
@@ -198,6 +237,8 @@ public enum OrchestrationProgress {
       return "Creating worktree \(index)/\(total): \(branch)"
     case .launchingSession(let index, let total, let branch):
       return "Launching session \(index)/\(total): \(branch)"
+    case .waitingForSessions(let found, let total):
+      return "Waiting for sessions... (\(found)/\(total))"
     case .completed(let success, let errors):
       if errors > 0 {
         return "Completed: \(success) sessions, \(errors) failed"

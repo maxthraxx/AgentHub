@@ -26,12 +26,24 @@ public final class CLISessionsViewModel {
   private let searchService: GlobalSearchService
   private let claudeClient: ClaudeCode?
   private let worktreeService = GitWorktreeService()
+  private let observationService: SessionObservationService
 
   // MARK: - State
 
   public private(set) var selectedRepositories: [SelectedRepository] = []
   public private(set) var loadingState: CLILoadingState = .idle
   public private(set) var error: Error?
+
+  // MARK: - Worktree Deletion State
+
+  public private(set) var deletingWorktreePath: String? = nil
+  public private(set) var worktreeDeletionError: WorktreeDeletionError? = nil
+
+  public struct WorktreeDeletionError: Identifiable {
+    public let id = UUID()
+    public let worktree: WorktreeBranch
+    public let message: String
+  }
 
   // MARK: - Search State
 
@@ -66,6 +78,10 @@ public final class CLISessionsViewModel {
   private var pendingAutoObserveSessionId: String? = nil
   /// Project path for the pending auto-observe session
   private var pendingAutoObserveProjectPath: String? = nil
+  /// Worktree path pending auto-observe after terminal opens
+  private var pendingAutoObserveWorktreePath: String? = nil
+  /// Session IDs that existed before we opened the terminal (to detect new ones)
+  private var existingSessionIdsBeforeTerminal: Set<String> = []
 
   // MARK: - Monitoring State
 
@@ -102,6 +118,7 @@ public final class CLISessionsViewModel {
   // MARK: - Private
 
   private var subscriptionTask: Task<Void, Never>?
+  private var observationServiceTask: Task<Void, Never>?
   private let persistenceKey = "CLISessionsSelectedRepositories"
 
   // MARK: - Initialization
@@ -112,6 +129,7 @@ public final class CLISessionsViewModel {
     self.searchService = GlobalSearchService()
     self.claudeClient = claudeClient
     self.fileWatcher = SessionFileWatcher()
+    self.observationService = SessionObservationService()
     self.showLastMessage = UserDefaults.standard.bool(forKey: "CLISessionsShowLastMessage")
 
     // Load approval timeout with default of 5 seconds
@@ -119,6 +137,7 @@ public final class CLISessionsViewModel {
     self.approvalTimeoutSeconds = savedTimeout > 0 ? savedTimeout : 5
 
     setupSubscriptions()
+    setupObservationServiceSubscription()
     restorePersistedRepositories()
     requestNotificationPermissions()
 
@@ -145,6 +164,15 @@ public final class CLISessionsViewModel {
       for await repositories in self.monitorService.repositoriesPublisher.values {
         guard !Task.isCancelled else { break }
 
+        // Extract all sessions for auto-observe
+        let allSessions = repositories.flatMap { $0.worktrees.flatMap(\.sessions) }
+
+        // Auto-observe new sessions
+        Task { [weak self] in
+          guard let self = self else { return }
+          await self.observationService.processAndAutoObserve(sessions: allSessions)
+        }
+
         await MainActor.run { [weak self] in
           guard let self = self else { return }
           self.selectedRepositories = repositories
@@ -155,6 +183,39 @@ public final class CLISessionsViewModel {
           // Check for pending auto-observe
           self.processPendingAutoObserve()
         }
+      }
+    }
+  }
+
+  /// Sets up subscription to observation service for syncing observed sessions to monitoring
+  private func setupObservationServiceSubscription() {
+    observationServiceTask = Task { [weak self] in
+      guard let self = self else { return }
+
+      for await observedIds in self.observationService.observedSessionIdsPublisher.values {
+        guard !Task.isCancelled else { break }
+
+        await MainActor.run { [weak self] in
+          self?.syncObservedSessions(observedIds)
+        }
+      }
+    }
+  }
+
+  /// Syncs observed session IDs from observation service to actual monitoring state
+  private func syncObservedSessions(_ observedIds: Set<String>) {
+    // Find sessions to start monitoring
+    let toStart = observedIds.subtracting(monitoredSessionIds)
+    // Find sessions to stop monitoring
+    let toStop = monitoredSessionIds.subtracting(observedIds)
+
+    for sessionId in toStop {
+      stopMonitoring(sessionId: sessionId)
+    }
+
+    for sessionId in toStart {
+      if let session = findSession(byId: sessionId) {
+        startMonitoring(session: session)
       }
     }
   }
@@ -264,6 +325,7 @@ public final class CLISessionsViewModel {
   /// - Parameter worktree: The worktree to delete
   public func deleteWorktree(_ worktree: WorktreeBranch) async {
     print("[CLISessionsVM] deleteWorktree: \(worktree.path)")
+    deletingWorktreePath = worktree.path
 
     do {
       try await worktreeService.removeWorktree(at: worktree.path)
@@ -271,7 +333,18 @@ public final class CLISessionsViewModel {
       refresh()
     } catch {
       print("[CLISessionsVM] Failed to delete worktree: \(error.localizedDescription)")
+      worktreeDeletionError = WorktreeDeletionError(
+        worktree: worktree,
+        message: error.localizedDescription
+      )
     }
+
+    deletingWorktreePath = nil
+  }
+
+  /// Clears the worktree deletion error
+  public func clearWorktreeDeletionError() {
+    worktreeDeletionError = nil
   }
 
   /// Refreshes sessions for all selected repositories
@@ -397,6 +470,31 @@ public final class CLISessionsViewModel {
     }
   }
 
+  /// Opens terminal in worktree and sets up auto-observe for the new session
+  /// - Parameters:
+  ///   - worktree: The worktree to open
+  ///   - skipCheckout: If true, skips git checkout even for non-worktrees
+  /// - Returns: An error if launching failed, nil on success
+  public func openTerminalAndAutoObserve(_ worktree: WorktreeBranch, skipCheckout: Bool = false) async -> Error? {
+    // Capture existing session IDs in this worktree
+    existingSessionIdsBeforeTerminal = Set(worktree.sessions.map { $0.id })
+    pendingAutoObserveWorktreePath = worktree.path
+
+    let error = openTerminalInWorktree(worktree, skipCheckout: skipCheckout)
+
+    if error == nil {
+      // Wait for session to be created, then refresh
+      try? await Task.sleep(for: .seconds(1))
+      refresh()
+    } else {
+      // Clear pending state on error
+      pendingAutoObserveWorktreePath = nil
+      existingSessionIdsBeforeTerminal = []
+    }
+
+    return error
+  }
+
   /// Copies the full session ID to the clipboard
   /// - Parameter session: The session whose ID to copy
   public func copySessionId(_ session: CLISession) {
@@ -435,14 +533,21 @@ public final class CLISessionsViewModel {
     }
   }
 
+  /// Find a session by its ID
+  public func findSession(byId sessionId: String) -> CLISession? {
+    allSessions.first { $0.id == sessionId }
+  }
+
   // MARK: - Monitoring Management
 
-  /// Toggle monitoring for a session
+  /// Toggle monitoring for a session (goes through observation service)
   public func toggleMonitoring(for session: CLISession) {
-    if monitoredSessionIds.contains(session.id) {
-      stopMonitoring(session: session)
-    } else {
-      startMonitoring(session: session)
+    Task {
+      if await observationService.isObserving(sessionId: session.id) {
+        await observationService.stopObserving(sessionId: session.id)
+      } else {
+        await observationService.observe(sessionId: session.id)
+      }
     }
   }
 
@@ -568,36 +673,65 @@ public final class CLISessionsViewModel {
 
   /// Processes pending auto-observe: finds the session, expands its container, and starts monitoring
   private func processPendingAutoObserve() {
-    guard let sessionId = pendingAutoObserveSessionId,
-          let projectPath = pendingAutoObserveProjectPath else {
-      return
-    }
+    // Handle search result auto-observe (existing logic)
+    if let sessionId = pendingAutoObserveSessionId,
+       let projectPath = pendingAutoObserveProjectPath {
+      // Clear pending state
+      pendingAutoObserveSessionId = nil
+      pendingAutoObserveProjectPath = nil
 
-    // Clear pending state
-    pendingAutoObserveSessionId = nil
-    pendingAutoObserveProjectPath = nil
-
-    // Find the repository containing this project path
-    guard let repoIndex = selectedRepositories.firstIndex(where: {
-      $0.path == projectPath || $0.worktrees.contains { $0.path == projectPath }
-    }) else {
-      return
-    }
-
-    // Expand the repository
-    selectedRepositories[repoIndex].isExpanded = true
-
-    // Find the worktree containing the session
-    for worktreeIndex in selectedRepositories[repoIndex].worktrees.indices {
-      let worktree = selectedRepositories[repoIndex].worktrees[worktreeIndex]
-      if let session = worktree.sessions.first(where: { $0.id == sessionId }) {
-        // Expand the worktree
-        selectedRepositories[repoIndex].worktrees[worktreeIndex].isExpanded = true
-
-        // Start monitoring the session
-        startMonitoring(session: session)
+      // Find the repository containing this project path
+      guard let repoIndex = selectedRepositories.firstIndex(where: {
+        $0.path == projectPath || $0.worktrees.contains { $0.path == projectPath }
+      }) else {
         return
       }
+
+      // Expand the repository
+      selectedRepositories[repoIndex].isExpanded = true
+
+      // Find the worktree containing the session
+      for worktreeIndex in selectedRepositories[repoIndex].worktrees.indices {
+        let worktree = selectedRepositories[repoIndex].worktrees[worktreeIndex]
+        if let session = worktree.sessions.first(where: { $0.id == sessionId }) {
+          // Expand the worktree
+          selectedRepositories[repoIndex].worktrees[worktreeIndex].isExpanded = true
+
+          // Start monitoring the session
+          startMonitoring(session: session)
+          return
+        }
+      }
+    }
+
+    // Handle terminal-opened session auto-observe (new logic)
+    if let worktreePath = pendingAutoObserveWorktreePath {
+      pendingAutoObserveWorktreePath = nil
+
+      // Find worktree and detect new sessions
+      for repo in selectedRepositories {
+        if let worktree = repo.worktrees.first(where: { $0.path == worktreePath }) {
+          // Find new session (one that wasn't there before)
+          let newSession = worktree.sessions.first { session in
+            !existingSessionIdsBeforeTerminal.contains(session.id)
+          }
+
+          existingSessionIdsBeforeTerminal = []
+
+          if let session = newSession {
+            // Expand repo and worktree, start monitoring
+            if let repoIndex = selectedRepositories.firstIndex(where: { $0.id == repo.id }) {
+              selectedRepositories[repoIndex].isExpanded = true
+              if let wtIndex = selectedRepositories[repoIndex].worktrees.firstIndex(where: { $0.id == worktree.id }) {
+                selectedRepositories[repoIndex].worktrees[wtIndex].isExpanded = true
+              }
+            }
+            startMonitoring(session: session)
+          }
+          return
+        }
+      }
+      existingSessionIdsBeforeTerminal = []
     }
   }
 

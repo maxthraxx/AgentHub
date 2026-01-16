@@ -231,8 +231,8 @@ public final class IntelligenceViewModel {
             - Use this path as the modulePath in your orchestration plan
             """
 
-          // CRITICAL: Disable ALL tools - force pure text/JSON output
-          options.allowedTools = []
+          // Use disallowedTools to prevent file modifications during orchestration
+          options.disallowedTools = ["Edit", "MultiEdit", "Write", "AskUserQuestion", "Bash"]
         }
 
         // Send the prompt
