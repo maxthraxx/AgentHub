@@ -525,6 +525,14 @@ public actor GitWorktreeService {
     // Capture pattern for use in task
     let pattern = Self.updatingFilesPattern
 
+    // Actor to accumulate stderr lines for error reporting (thread-safe)
+    actor StderrAccumulator {
+      var lines: [String] = []
+      func append(_ line: String) { lines.append(line) }
+      func getAll() -> String { lines.joined(separator: "\n") }
+    }
+    let stderrAccumulator = StderrAccumulator()
+
     // Use task group for proper async handling
     let (exitCode, didTimeout) = try await withThrowingTaskGroup(of: (Int32, Bool).self) { group in
       // Task 1: Run process and wait for termination
@@ -545,6 +553,7 @@ public actor GitWorktreeService {
       group.addTask {
         for try await line in errorPipe.fileHandleForReading.bytes.lines {
           print("[GitWorktreeService] stderr: \(line)")
+          await stderrAccumulator.append(line)
 
           if let match = line.firstMatch(of: pattern),
              let current = Int(match.1),
@@ -597,9 +606,11 @@ public actor GitWorktreeService {
     }
 
     if exitCode != 0 {
-      let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-      let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
-      throw WorktreeCreationError.gitCommandFailed(errorOutput.trimmingCharacters(in: .whitespacesAndNewlines))
+      // Use accumulated stderr instead of trying to read the pipe again (which would be empty)
+      let errorOutput = await stderrAccumulator.getAll()
+      throw WorktreeCreationError.gitCommandFailed(
+        errorOutput.isEmpty ? "Git command failed with exit code \(exitCode)" : errorOutput
+      )
     }
 
     return output

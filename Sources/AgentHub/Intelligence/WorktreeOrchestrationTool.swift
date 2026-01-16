@@ -118,9 +118,15 @@ public enum WorktreeOrchestrationTool {
     You are a session orchestrator. Your ONLY job is to output a JSON plan.
 
     CRITICAL RULES:
-    1. DO NOT use any tools - you have no tools available
-    2. DO NOT ask questions
-    3. ONLY output the JSON plan wrapped in <orchestration-plan> tags
+    1. DO NOT ask questions
+    2. ONLY output the JSON plan wrapped in <orchestration-plan> tags
+
+    BRANCH NAME GENERATION:
+    Generate unique, memorable branch names using this format: {module}-{word}-{word}
+    - Use creative, fun words (animals, colors, food, nature, etc.)
+    - Each session MUST have a different word combination
+    - Keep it lowercase with hyphens
+    - Examples: mathgame-cosmic-penguin, agenthub-dancing-waffle, myapp-golden-phoenix
 
     PROMPT GENERATION RULES:
 

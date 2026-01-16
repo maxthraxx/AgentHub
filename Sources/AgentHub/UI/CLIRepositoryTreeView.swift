@@ -24,6 +24,7 @@ public struct CLIRepositoryTreeView: View {
   let onDeleteWorktree: ((WorktreeBranch) -> Void)?
   var showLastMessage: Bool = false
   var isDebugMode: Bool = false
+  var deletingWorktreePath: String? = nil
 
   @State private var worktreeToDelete: WorktreeBranch?
   @State private var showDeleteConfirmation = false
@@ -41,7 +42,8 @@ public struct CLIRepositoryTreeView: View {
     onOpenTerminalForWorktree: @escaping (WorktreeBranch) -> Void,
     onDeleteWorktree: ((WorktreeBranch) -> Void)? = nil,
     showLastMessage: Bool = false,
-    isDebugMode: Bool = false
+    isDebugMode: Bool = false,
+    deletingWorktreePath: String? = nil
   ) {
     self.repository = repository
     self.onRemove = onRemove
@@ -56,6 +58,7 @@ public struct CLIRepositoryTreeView: View {
     self.onDeleteWorktree = onDeleteWorktree
     self.showLastMessage = showLastMessage
     self.isDebugMode = isDebugMode
+    self.deletingWorktreePath = deletingWorktreePath
   }
 
   public var body: some View {
@@ -80,7 +83,8 @@ public struct CLIRepositoryTreeView: View {
             isSessionMonitored: isSessionMonitored,
             onToggleMonitoring: onToggleMonitoring,
             showLastMessage: showLastMessage,
-            isDebugMode: isDebugMode
+            isDebugMode: isDebugMode,
+            isDeleting: worktree.path == deletingWorktreePath
           )
           .padding(.leading, 12)
         }

@@ -148,21 +148,84 @@ public actor CLISessionMonitorService {
     let sessionEntries = Dictionary(grouping: historyEntries) { $0.sessionId }
     print("[CLIMonitorService] Grouped into \(sessionEntries.count) sessions")
 
+    // Build a map of session ID -> gitBranch (read from session files)
+    var sessionBranches: [String: String] = [:]
+    for (sessionId, entries) in sessionEntries {
+      if let firstEntry = entries.first,
+         let branch = readGitBranchFromSession(sessionId: sessionId, projectPath: firstEntry.project) {
+        sessionBranches[sessionId] = branch
+      }
+    }
+    print("[CLIMonitorService] Read branch info for \(sessionBranches.count) sessions")
+
+    // Debug: Print unique branches found
+    let uniqueBranches = Set(sessionBranches.values)
+    print("[CLIMonitorService] Unique session branches: \(uniqueBranches)")
+
+    // Debug: Check which sessions have worktree branches
+    for (sessionId, branch) in sessionBranches {
+      if branch.contains("refactor-math") {
+        if let entries = sessionEntries[sessionId], let first = entries.first {
+          print("[CLIMonitorService] DEBUG: Session \(sessionId.prefix(8)) branch='\(branch)' project='\(first.project)'")
+        }
+      }
+    }
+
     // Build sessions and assign to worktrees
     var updatedRepositories = selectedRepositories
 
+    // Collect all worktree branch names for this repository set
+    var worktreeBranchNames: Set<String> = []
+    for repo in updatedRepositories {
+      for worktree in repo.worktrees {
+        worktreeBranchNames.insert(worktree.name)
+      }
+    }
+    print("[CLIMonitorService] Worktree branch names: \(worktreeBranchNames)")
+
     for repoIndex in updatedRepositories.indices {
+      let repoPath = updatedRepositories[repoIndex].path
+
+      // Collect all paths for this repository (main + all worktrees)
+      let allRepoPaths = [repoPath] + updatedRepositories[repoIndex].worktrees.map { $0.path }
+
       for worktreeIndex in updatedRepositories[repoIndex].worktrees.indices {
         let worktreePath = updatedRepositories[repoIndex].worktrees[worktreeIndex].path
+        let worktreeBranch = updatedRepositories[repoIndex].worktrees[worktreeIndex].name
+        let isWorktreeEntry = updatedRepositories[repoIndex].worktrees[worktreeIndex].isWorktree
 
         // Find sessions for this worktree
         var sessions: [CLISession] = []
 
         for (sessionId, entries) in sessionEntries {
-          guard let firstEntry = entries.first,
-                firstEntry.project.hasPrefix(worktreePath) || firstEntry.project == worktreePath else {
-            continue
+          guard let firstEntry = entries.first else { continue }
+
+          // Check if this session belongs to this repository:
+          // Session's project path must match the repo OR any of its worktree paths
+          let pathMatchesRepo = allRepoPaths.contains { path in
+            firstEntry.project.hasPrefix(path) || firstEntry.project == path
           }
+          guard pathMatchesRepo else { continue }
+
+          // Get session's branch from session file
+          let sessionBranch = sessionBranches[sessionId]
+
+          // Match by branch name
+          let branchMatches: Bool
+          if let sessionBranch = sessionBranch {
+            // Session has branch info - match by branch
+            branchMatches = sessionBranch == worktreeBranch
+            // Debug: log when we find a session with a worktree branch
+            if worktreeBranchNames.contains(sessionBranch) && sessionBranch != "main" {
+              print("[CLIMonitorService] DEBUG: Session \(sessionId.prefix(8)) has branch '\(sessionBranch)', comparing to worktree '\(worktreeBranch)', matches: \(branchMatches)")
+            }
+          } else {
+            // No branch info - only assign to main worktree (non-worktree entry)
+            // This handles old sessions that don't have gitBranch in their file
+            branchMatches = !isWorktreeEntry
+          }
+
+          guard branchMatches else { continue }
 
           // Check if session is active
           let isActive = runningProcesses.contains { process in
@@ -177,8 +240,8 @@ public actor CLISessionMonitorService {
           let session = CLISession(
             id: sessionId,
             projectPath: firstEntry.project,
-            branchName: updatedRepositories[repoIndex].worktrees[worktreeIndex].name,
-            isWorktree: updatedRepositories[repoIndex].worktrees[worktreeIndex].isWorktree,
+            branchName: sessionBranch ?? worktreeBranch,
+            isWorktree: isWorktreeEntry,
             lastActivityAt: entries.map { $0.date }.max() ?? Date(),
             messageCount: entries.count,
             isActive: isActive,
@@ -192,6 +255,7 @@ public actor CLISessionMonitorService {
         // Sort by last activity
         sessions.sort { $0.lastActivityAt > $1.lastActivityAt }
         updatedRepositories[repoIndex].worktrees[worktreeIndex].sessions = sessions
+        print("[CLIMonitorService] Worktree '\(worktreeBranch)' matched \(sessions.count) sessions")
       }
     }
 
@@ -257,6 +321,36 @@ public actor CLISessionMonitorService {
     // For now, skip active process detection - sessions will show but not marked as "active"
     print("[CLIMonitorService] getRunningClaudeProcesses - skipping (disabled)")
     return []
+  }
+
+  // MARK: - Session File Parsing
+
+  /// Reads a session file and extracts the gitBranch field
+  /// - Parameters:
+  ///   - sessionId: The session ID
+  ///   - projectPath: The project path from history (used to find session file)
+  /// - Returns: The git branch name if found, nil otherwise
+  private func readGitBranchFromSession(sessionId: String, projectPath: String) -> String? {
+    let encodedPath = projectPath.replacingOccurrences(of: "/", with: "-")
+    let sessionFilePath = "\(claudeDataPath)/projects/\(encodedPath)/\(sessionId).jsonl"
+
+    guard let data = FileManager.default.contents(atPath: sessionFilePath),
+          let content = String(data: data, encoding: .utf8) else {
+      return nil
+    }
+
+    // Parse lines looking for gitBranch field
+    for line in content.components(separatedBy: .newlines) {
+      guard !line.isEmpty,
+            let jsonData = line.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+            let gitBranch = json["gitBranch"] as? String else {
+        continue
+      }
+      return gitBranch
+    }
+
+    return nil
   }
 
   // MARK: - Filtered History Parsing

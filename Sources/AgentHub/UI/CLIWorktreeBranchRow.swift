@@ -23,6 +23,7 @@ public struct CLIWorktreeBranchRow: View {
   let onToggleMonitoring: (CLISession) -> Void
   var showLastMessage: Bool = false
   var isDebugMode: Bool = false
+  var isDeleting: Bool = false
 
   // Max visible sessions before scrolling
   private let maxVisibleSessions = 4
@@ -57,7 +58,8 @@ public struct CLIWorktreeBranchRow: View {
     isSessionMonitored: @escaping (String) -> Bool,
     onToggleMonitoring: @escaping (CLISession) -> Void,
     showLastMessage: Bool = false,
-    isDebugMode: Bool = false
+    isDebugMode: Bool = false,
+    isDeleting: Bool = false
   ) {
     self.worktree = worktree
     self.isExpanded = isExpanded
@@ -70,6 +72,7 @@ public struct CLIWorktreeBranchRow: View {
     self.onToggleMonitoring = onToggleMonitoring
     self.showLastMessage = showLastMessage
     self.isDebugMode = isDebugMode
+    self.isDeleting = isDeleting
   }
 
   /// Truncates a path from the middle if too long
@@ -128,14 +131,20 @@ public struct CLIWorktreeBranchRow: View {
 
           // Delete worktree button (only for actual worktrees in debug mode)
           if isDebugMode && worktree.isWorktree {
-            Button(action: { onDeleteWorktree?() }) {
-              Image(systemName: "trash")
-                .font(.caption)
-                .foregroundColor(.red.opacity(0.8))
-                .agentHubChip()
+            if isDeleting {
+              ProgressView()
+                .scaleEffect(0.6)
+                .frame(width: 16, height: 16)
+            } else {
+              Button(action: { onDeleteWorktree?() }) {
+                Image(systemName: "trash")
+                  .font(.caption)
+                  .foregroundColor(.red.opacity(0.8))
+                  .agentHubChip()
+              }
+              .buttonStyle(.plain)
+              .help("Delete worktree")
             }
-            .buttonStyle(.plain)
-            .help("Delete worktree")
           }
 
           // Open terminal button

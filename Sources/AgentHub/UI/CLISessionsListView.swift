@@ -83,13 +83,45 @@ public struct CLISessionsListView: View {
         terminalConfirmation = nil
       }
       Button("Switch & Open") {
-        if let error = viewModel.openTerminalInWorktree(confirmation.worktree, skipCheckout: false) {
-          print("Failed to open terminal: \(error.localizedDescription)")
+        Task {
+          if let error = await viewModel.openTerminalAndAutoObserve(confirmation.worktree, skipCheckout: false) {
+            print("Failed to open terminal: \(error.localizedDescription)")
+          }
         }
         terminalConfirmation = nil
       }
     } message: { confirmation in
       Text("You have uncommitted changes on '\(confirmation.currentBranch)'. Switching to '\(confirmation.worktree.name)' may fail or carry changes over.")
+    }
+    .alert(
+      "Failed to Delete Worktree",
+      isPresented: Binding(
+        get: { viewModel.worktreeDeletionError != nil },
+        set: { if !$0 { viewModel.clearWorktreeDeletionError() } }
+      )
+    ) {
+      if let error = viewModel.worktreeDeletionError {
+        Button("Try Again") {
+          Task {
+            let worktree = error.worktree
+            viewModel.clearWorktreeDeletionError()
+            await viewModel.deleteWorktree(worktree)
+          }
+        }
+        Button("Open in Terminal") {
+          if let error = viewModel.worktreeDeletionError {
+            _ = viewModel.openTerminalInWorktree(error.worktree)
+            viewModel.clearWorktreeDeletionError()
+          }
+        }
+        Button("Cancel", role: .cancel) {
+          viewModel.clearWorktreeDeletionError()
+        }
+      }
+    } message: {
+      if let error = viewModel.worktreeDeletionError {
+        Text("Could not delete worktree at:\n\(error.worktree.path)\n\nError: \(error.message)")
+      }
     }
   }
 
@@ -294,7 +326,7 @@ public struct CLISessionsListView: View {
 
                 if !check.needsCheckout {
                   // Already on correct branch or is a worktree - open directly
-                  if let error = viewModel.openTerminalInWorktree(worktree, skipCheckout: true) {
+                  if let error = await viewModel.openTerminalAndAutoObserve(worktree, skipCheckout: true) {
                     print("Failed to open terminal: \(error.localizedDescription)")
                   }
                 } else if check.hasUncommittedChanges {
@@ -305,7 +337,7 @@ public struct CLISessionsListView: View {
                   )
                 } else {
                   // Need checkout but no uncommitted changes - proceed with checkout
-                  if let error = viewModel.openTerminalInWorktree(worktree, skipCheckout: false) {
+                  if let error = await viewModel.openTerminalAndAutoObserve(worktree, skipCheckout: false) {
                     print("Failed to open terminal: \(error.localizedDescription)")
                   }
                 }
@@ -317,7 +349,8 @@ public struct CLISessionsListView: View {
               }
             },
             showLastMessage: viewModel.showLastMessage,
-            isDebugMode: true  // Enable debug mode for now
+            isDebugMode: true,  // Enable debug mode for now
+            deletingWorktreePath: viewModel.deletingWorktreePath
           )
         }
       }
