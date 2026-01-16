@@ -98,13 +98,15 @@ public struct TerminalLauncher {
   ///   - isWorktree: Whether this is a worktree (skips branch checkout)
   ///   - skipCheckout: If true, skips checkout even for non-worktrees (already on correct branch)
   ///   - claudeClient: The Claude client with configuration
+  ///   - initialPrompt: Optional initial prompt to send to Claude
   /// - Returns: An error if launching fails, nil on success
   public static func launchTerminalInPath(
     _ path: String,
     branchName: String,
     isWorktree: Bool,
     skipCheckout: Bool = false,
-    claudeClient: ClaudeCode
+    claudeClient: ClaudeCode,
+    initialPrompt: String? = nil
   ) -> Error? {
     let claudeCommand = claudeClient.configuration.command
 
@@ -126,11 +128,21 @@ public struct TerminalLauncher {
     let escapedBranch = branchName.replacingOccurrences(of: "\\", with: "\\\\")
       .replacingOccurrences(of: "\"", with: "\\\"")
 
+    // Escape the initial prompt if provided
+    let escapedPrompt = initialPrompt?
+      .replacingOccurrences(of: "\\", with: "\\\\")
+      .replacingOccurrences(of: "\"", with: "\\\"")
+      .replacingOccurrences(of: "'", with: "'\\''")
+
     // Build the command - for worktrees or when skipCheckout is true, just cd and run claude
     // Otherwise, checkout the branch first
     let command: String
     if isWorktree || skipCheckout {
-      command = "cd \"\(escapedPath)\" && \"\(escapedClaudePath)\""
+      if let prompt = escapedPrompt {
+        command = "cd \"\(escapedPath)\" && \"\(escapedClaudePath)\" '\(prompt)'"
+      } else {
+        command = "cd \"\(escapedPath)\" && \"\(escapedClaudePath)\""
+      }
     } else {
       command = "cd \"\(escapedPath)\" && git checkout \"\(escapedBranch)\" && \"\(escapedClaudePath)\""
     }
@@ -151,7 +163,8 @@ public struct TerminalLauncher {
       let url = URL(fileURLWithPath: scriptPath)
       NSWorkspace.shared.open(url)
 
-      DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+      // Clean up script after Terminal has had time to read it
+      DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
         try? FileManager.default.removeItem(atPath: scriptPath)
       }
 

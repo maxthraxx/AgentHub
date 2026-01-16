@@ -311,7 +311,13 @@ public struct CLISessionsListView: View {
                 }
               }
             },
-            showLastMessage: viewModel.showLastMessage
+            onDeleteWorktree: { worktree in
+              Task {
+                await viewModel.deleteWorktree(worktree)
+              }
+            },
+            showLastMessage: viewModel.showLastMessage,
+            isDebugMode: true  // Enable debug mode for now
           )
         }
       }

@@ -16,11 +16,13 @@ public struct CLIWorktreeBranchRow: View {
   let isExpanded: Bool
   let onToggleExpanded: () -> Void
   let onOpenTerminal: () -> Void
+  let onDeleteWorktree: (() -> Void)?
   let onConnectSession: (CLISession) -> Void
   let onCopySessionId: (CLISession) -> Void
   let isSessionMonitored: (String) -> Bool
   let onToggleMonitoring: (CLISession) -> Void
   var showLastMessage: Bool = false
+  var isDebugMode: Bool = false
 
   // Max visible sessions before scrolling
   private let maxVisibleSessions = 4
@@ -49,21 +51,25 @@ public struct CLIWorktreeBranchRow: View {
     isExpanded: Bool,
     onToggleExpanded: @escaping () -> Void,
     onOpenTerminal: @escaping () -> Void,
+    onDeleteWorktree: (() -> Void)? = nil,
     onConnectSession: @escaping (CLISession) -> Void,
     onCopySessionId: @escaping (CLISession) -> Void,
     isSessionMonitored: @escaping (String) -> Bool,
     onToggleMonitoring: @escaping (CLISession) -> Void,
-    showLastMessage: Bool = false
+    showLastMessage: Bool = false,
+    isDebugMode: Bool = false
   ) {
     self.worktree = worktree
     self.isExpanded = isExpanded
     self.onToggleExpanded = onToggleExpanded
     self.onOpenTerminal = onOpenTerminal
+    self.onDeleteWorktree = onDeleteWorktree
     self.onConnectSession = onConnectSession
     self.onCopySessionId = onCopySessionId
     self.isSessionMonitored = isSessionMonitored
     self.onToggleMonitoring = onToggleMonitoring
     self.showLastMessage = showLastMessage
+    self.isDebugMode = isDebugMode
   }
 
   /// Truncates a path from the middle if too long
@@ -118,6 +124,18 @@ public struct CLIWorktreeBranchRow: View {
               .font(.caption)
               .foregroundColor(worktree.activeSessionCount > 0 ? .brandPrimary : .secondary)
               .agentHubChip(isActive: worktree.activeSessionCount > 0)
+          }
+
+          // Delete worktree button (only for actual worktrees in debug mode)
+          if isDebugMode && worktree.isWorktree {
+            Button(action: { onDeleteWorktree?() }) {
+              Image(systemName: "trash")
+                .font(.caption)
+                .foregroundColor(.red.opacity(0.8))
+                .agentHubChip()
+            }
+            .buttonStyle(.plain)
+            .help("Delete worktree")
           }
 
           // Open terminal button

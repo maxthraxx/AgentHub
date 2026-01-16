@@ -23,6 +23,9 @@ public final class IntelligenceViewModel {
   /// Stream processor for handling responses
   private let streamProcessor = IntelligenceStreamProcessor()
 
+  /// Orchestration service for parallel worktree operations
+  private var orchestrationService: WorktreeOrchestrationService?
+
   /// Current loading state
   public private(set) var isLoading: Bool = false
 
@@ -35,10 +38,24 @@ public final class IntelligenceViewModel {
   /// Working directory for Claude operations
   public var workingDirectory: String?
 
+  /// Orchestration progress message
+  public private(set) var orchestrationProgress: String?
+
+  /// Detailed worktree creation progress
+  public private(set) var worktreeProgress: WorktreeCreationProgress?
+
+  /// Pending orchestration plan to execute after stream completes
+  private var pendingOrchestrationPlan: OrchestrationPlan?
+
   // MARK: - Initialization
 
   /// Creates a new IntelligenceViewModel with a Claude Code client
-  public init(claudeClient: ClaudeCode? = nil) {
+  public init(
+    claudeClient: ClaudeCode? = nil,
+    gitService: GitWorktreeService? = nil,
+    monitorService: CLISessionMonitorService? = nil
+  ) {
+    // Create Claude client
     if let client = claudeClient {
       self.claudeClient = client
     } else {
@@ -72,6 +89,27 @@ public final class IntelligenceViewModel {
       }
     }
 
+    // Create orchestration service if dependencies provided
+    if let gitService = gitService, let monitorService = monitorService {
+      self.orchestrationService = WorktreeOrchestrationService(
+        gitService: gitService,
+        monitorService: monitorService,
+        claudeClient: self.claudeClient
+      )
+
+      self.orchestrationService?.onProgress = { [weak self] progress in
+        Task { @MainActor in
+          self?.orchestrationProgress = progress.message
+        }
+      }
+
+      self.orchestrationService?.onWorktreeProgress = { [weak self] progress in
+        Task { @MainActor in
+          self?.worktreeProgress = progress
+        }
+      }
+    }
+
     setupStreamCallbacks()
   }
 
@@ -94,16 +132,52 @@ public final class IntelligenceViewModel {
     }
 
     streamProcessor.onComplete = { [weak self] in
+      guard let self = self else { return }
       Task { @MainActor in
-        self?.isLoading = false
+        // Execute pending orchestration AFTER stream completes (avoids race condition)
+        if let plan = self.pendingOrchestrationPlan {
+          self.pendingOrchestrationPlan = nil
+          await self.executeOrchestrationPlan(plan)
+        }
+        self.isLoading = false
+        self.orchestrationProgress = nil
+        self.worktreeProgress = nil
       }
     }
 
     streamProcessor.onError = { [weak self] error in
       Task { @MainActor in
         self?.isLoading = false
+        self?.orchestrationProgress = nil
+        self?.worktreeProgress = nil
         self?.errorMessage = error.localizedDescription
       }
+    }
+
+    // Store orchestration plan for execution after stream completes (avoid race condition)
+    streamProcessor.onOrchestrationPlan = { [weak self] plan in
+      self?.pendingOrchestrationPlan = plan
+    }
+  }
+
+  private func executeOrchestrationPlan(_ plan: OrchestrationPlan) async {
+    guard let orchestrationService = orchestrationService else {
+      print("❌ Orchestration service not available")
+      return
+    }
+
+    print("════════════════════════════════════════")
+    print("🎯 EXECUTING ORCHESTRATION PLAN")
+    print("📁 Module: \(plan.modulePath)")
+    print("📋 Sessions: \(plan.sessions.count)")
+    print("════════════════════════════════════════")
+
+    do {
+      let createdPaths = try await orchestrationService.executePlan(plan)
+      print("✅ Created \(createdPaths.count) worktrees")
+    } catch {
+      print("❌ Orchestration failed: \(error.localizedDescription)")
+      self.errorMessage = "Orchestration failed: \(error.localizedDescription)"
     }
   }
 
@@ -118,11 +192,21 @@ public final class IntelligenceViewModel {
     // Reset state
     lastResponse = ""
     errorMessage = nil
+    orchestrationProgress = nil
+    worktreeProgress = nil
+    pendingOrchestrationPlan = nil
     isLoading = true
+
+    // Determine if we're in orchestration mode (working directory selected)
+    let isOrchestrationMode = workingDirectory != nil && orchestrationService != nil
 
     print("════════════════════════════════════════")
     print("🧠 INTELLIGENCE REQUEST")
     print("📝 Prompt: \(text)")
+    if isOrchestrationMode {
+      print("🎯 Mode: Orchestration")
+      print("📁 Working Directory: \(workingDirectory ?? "")")
+    }
     print("════════════════════════════════════════")
 
     Task {
@@ -136,6 +220,20 @@ public final class IntelligenceViewModel {
         var options = ClaudeCodeOptions()
         // Use default permission mode for simple operations
         options.permissionMode = .default
+
+        // Use orchestration system prompt if in orchestration mode
+        if isOrchestrationMode, let workingDir = workingDirectory {
+          options.systemPrompt = """
+            \(WorktreeOrchestrationTool.systemPrompt)
+
+            CONTEXT:
+            - Working directory: \(workingDir)
+            - Use this path as the modulePath in your orchestration plan
+            """
+
+          // CRITICAL: Disable ALL tools - force pure text/JSON output
+          options.allowedTools = []
+        }
 
         // Send the prompt
         let result = try await claudeClient.runSinglePrompt(

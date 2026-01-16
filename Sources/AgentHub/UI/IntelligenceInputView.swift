@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 /// A simplified text input view for the Intelligence feature.
 /// Allows users to type prompts and send them to Claude Code.
@@ -15,7 +16,12 @@ struct IntelligenceInputView: View {
 
   @Binding var viewModel: IntelligenceViewModel
   @State private var text: String = ""
+  @State private var selectedModulePath: String?
+  @State private var isShowingFolderPicker = false
   @FocusState private var isFocused: Bool
+
+  /// Callback to dismiss the overlay
+  var onDismiss: (() -> Void)?
 
   private let placeholder = "Ask Claude Code..."
 
@@ -27,6 +33,17 @@ struct IntelligenceInputView: View {
       headerView
 
       Divider()
+
+      // Module selector (when selected)
+      if selectedModulePath != nil {
+        moduleChipView
+        Divider()
+      }
+
+      // Worktree progress (shown during orchestration)
+      if let progress = viewModel.worktreeProgress {
+        worktreeProgressView(progress)
+      }
 
       // Input area
       VStack(alignment: .leading, spacing: 8) {
@@ -41,19 +58,25 @@ struct IntelligenceInputView: View {
     .onAppear {
       isFocused = true
     }
+    .onChange(of: selectedModulePath) { _, newPath in
+      viewModel.workingDirectory = newPath
+    }
   }
 
   // MARK: - Header
 
   private var headerView: some View {
     HStack {
-      Image(systemName: "sparkles")
-        .font(.system(size: 16))
-        .foregroundColor(.brandPrimary)
-      Text("Intelligence")
-        .font(.headline)
-        .foregroundColor(.primary)
       Spacer()
+      // Folder picker button
+      Button(action: showFolderPicker) {
+        Image(systemName: selectedModulePath != nil ? "folder.fill" : "folder")
+          .font(.system(size: 14))
+          .foregroundColor(selectedModulePath != nil ? .brandPrimary : .secondary)
+      }
+      .buttonStyle(.plain)
+      .help("Select a module/repository")
+
       if viewModel.isLoading {
         ProgressView()
           .scaleEffect(0.7)
@@ -61,6 +84,81 @@ struct IntelligenceInputView: View {
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 10)
+  }
+
+  // MARK: - Worktree Progress
+
+  @ViewBuilder
+  private func worktreeProgressView(_ progress: WorktreeCreationProgress) -> some View {
+    HStack(spacing: 8) {
+      ProgressView()
+        .scaleEffect(0.7)
+
+      Text(progress.statusMessage)
+        .font(.caption)
+        .foregroundColor(.secondary)
+        .lineLimit(1)
+
+      Spacer()
+
+      // Show percentage if updating files
+      if case .updatingFiles(let current, let total) = progress {
+        Text("\(Int(Double(current) / Double(total) * 100))%")
+          .font(.caption.monospacedDigit())
+          .foregroundColor(.brandPrimary)
+      }
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 6)
+    .background(Color.brandPrimary.opacity(0.05))
+  }
+
+  // MARK: - Module Chip
+
+  private var moduleChipView: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "folder.fill")
+        .font(.system(size: 12))
+        .foregroundColor(.brandPrimary)
+
+      Text(moduleName)
+        .font(.system(.caption, weight: .medium))
+        .foregroundColor(.primary)
+        .lineLimit(1)
+
+      Spacer()
+
+      Button(action: { selectedModulePath = nil }) {
+        Image(systemName: "xmark.circle.fill")
+          .font(.system(size: 12))
+          .foregroundColor(.secondary)
+      }
+      .buttonStyle(.plain)
+      .help("Clear module selection")
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 8)
+    .background(Color.brandPrimary.opacity(0.1))
+  }
+
+  private var moduleName: String {
+    guard let path = selectedModulePath else { return "" }
+    return URL(fileURLWithPath: path).lastPathComponent
+  }
+
+  // MARK: - Folder Picker
+
+  private func showFolderPicker() {
+    let panel = NSOpenPanel()
+    panel.canChooseFiles = false
+    panel.canChooseDirectories = true
+    panel.allowsMultipleSelection = false
+    panel.message = "Select a repository or module"
+    panel.prompt = "Select"
+
+    if panel.runModal() == .OK, let url = panel.url {
+      selectedModulePath = url.path
+    }
   }
 
   // MARK: - Text Editor
@@ -177,7 +275,9 @@ struct IntelligenceInputView: View {
         viewModel.cancelRequest()
         return .handled
       }
-      return .ignored
+      // Dismiss overlay on Escape
+      onDismiss?()
+      return .handled
 
     default:
       return .ignored

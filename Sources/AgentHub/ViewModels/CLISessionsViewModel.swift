@@ -260,6 +260,20 @@ public final class CLISessionsViewModel {
     refresh()
   }
 
+  /// Deletes a worktree
+  /// - Parameter worktree: The worktree to delete
+  public func deleteWorktree(_ worktree: WorktreeBranch) async {
+    print("[CLISessionsVM] deleteWorktree: \(worktree.path)")
+
+    do {
+      try await worktreeService.removeWorktree(at: worktree.path)
+      print("[CLISessionsVM] Worktree deleted successfully")
+      refresh()
+    } catch {
+      print("[CLISessionsVM] Failed to delete worktree: \(error.localizedDescription)")
+    }
+  }
+
   /// Refreshes sessions for all selected repositories
   public func refresh() {
     print("[CLISessionsVM] refresh called")

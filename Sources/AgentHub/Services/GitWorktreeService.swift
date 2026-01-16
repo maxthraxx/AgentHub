@@ -489,7 +489,7 @@ public actor GitWorktreeService {
     return output
   }
 
-  /// Runs a git command and streams stderr for progress parsing
+  /// Runs a git command and streams stderr for progress parsing using modern Swift concurrency
   /// - Parameters:
   ///   - arguments: Git command arguments
   ///   - path: Working directory
@@ -515,77 +515,49 @@ public actor GitWorktreeService {
     environment["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes"
     process.environment = environment
 
-    // Provide empty stdin to prevent waiting for input
     let inputPipe = Pipe()
-    process.standardInput = inputPipe
-
     let outputPipe = Pipe()
     let errorPipe = Pipe()
+    process.standardInput = inputPipe
     process.standardOutput = outputPipe
     process.standardError = errorPipe
 
-    // Accumulated stderr for error reporting
-    actor StderrAccumulator {
-      var data = Data()
-      func append(_ newData: Data) {
-        data.append(newData)
-      }
-      func getData() -> Data {
-        return data
-      }
-    }
-    let stderrAccumulator = StderrAccumulator()
-
-    // Capture the regex pattern for use in the closure
+    // Capture pattern for use in task
     let pattern = Self.updatingFilesPattern
 
-    // Set up stderr handler to parse progress
-    errorPipe.fileHandleForReading.readabilityHandler = { handle in
-      let data = handle.availableData
-      guard !data.isEmpty else { return }
-
-      // Accumulate stderr data
-      Task {
-        await stderrAccumulator.append(data)
-      }
-
-      guard let line = String(data: data, encoding: .utf8) else { return }
-      print("[GitWorktreeService] stderr chunk: \(line)")
-
-      // Parse progress from stderr
-      if let match = line.firstMatch(of: pattern) {
-        if let current = Int(match.1), let total = Int(match.2) {
-          Task {
-            await onProgress(.updatingFiles(current: current, total: total))
-          }
-        }
-      } else if line.contains("Preparing worktree") {
-        Task {
-          await onProgress(.preparing(message: "Preparing worktree..."))
-        }
-      }
-    }
-
-    do {
-      try process.run()
-      try inputPipe.fileHandleForWriting.close()
-    } catch {
-      errorPipe.fileHandleForReading.readabilityHandler = nil
-      print("[GitWorktreeService] Failed to start process: \(error)")
-      throw WorktreeCreationError.gitCommandFailed("Failed to start git: \(error.localizedDescription)")
-    }
-
-    // Wait for process with timeout
-    let didTimeout = await withTaskGroup(of: Bool.self) { group in
+    // Use task group for proper async handling
+    let (exitCode, didTimeout) = try await withThrowingTaskGroup(of: (Int32, Bool).self) { group in
+      // Task 1: Run process and wait for termination
       group.addTask {
-        await withCheckedContinuation { continuation in
-          DispatchQueue.global().async {
-            process.waitUntilExit()
-            continuation.resume(returning: false)
+        try process.run()
+        try inputPipe.fileHandleForWriting.close()
+
+        // Use terminationHandler with continuation for proper async handling
+        let exitCode = await withCheckedContinuation { (continuation: CheckedContinuation<Int32, Never>) in
+          process.terminationHandler = { proc in
+            continuation.resume(returning: proc.terminationStatus)
           }
         }
+        return (exitCode, false)
       }
 
+      // Task 2: Read stderr and parse progress using AsyncStream
+      group.addTask {
+        for try await line in errorPipe.fileHandleForReading.bytes.lines {
+          print("[GitWorktreeService] stderr: \(line)")
+
+          if let match = line.firstMatch(of: pattern),
+             let current = Int(match.1),
+             let total = Int(match.2) {
+            await onProgress(.updatingFiles(current: current, total: total))
+          } else if line.contains("Preparing worktree") {
+            await onProgress(.preparing(message: "Preparing worktree..."))
+          }
+        }
+        return (Int32(-1), false) // Sentinel value
+      }
+
+      // Task 3: Timeout
       group.addTask {
         do {
           try await Task.sleep(for: .seconds(timeout))
@@ -593,33 +565,40 @@ public actor GitWorktreeService {
             print("[GitWorktreeService] Command timed out after \(timeout)s, terminating")
             process.terminate()
           }
-          return true
+          return (Int32(-1), true)
         } catch {
-          return false
+          return (Int32(-1), false) // Task was cancelled
         }
       }
 
-      let result = await group.next() ?? false
-      group.cancelAll()
+      // Wait for process to complete or timeout
+      var result: (Int32, Bool) = (0, false)
+      for try await taskResult in group {
+        if taskResult.1 { // Timeout
+          result = taskResult
+          group.cancelAll()
+          break
+        } else if taskResult.0 >= 0 { // Process completed (valid exit code)
+          result = taskResult
+          group.cancelAll()
+          break
+        }
+      }
       return result
     }
 
-    // Clean up handler
-    errorPipe.fileHandleForReading.readabilityHandler = nil
-
     let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-    let errorData = await stderrAccumulator.getData()
-
     let output = String(data: outputData, encoding: .utf8) ?? ""
-    let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
 
-    print("[GitWorktreeService] Exit status: \(process.terminationStatus), timed out: \(didTimeout)")
+    print("[GitWorktreeService] Exit status: \(exitCode), timed out: \(didTimeout)")
 
     if didTimeout {
       throw WorktreeCreationError.timeout
     }
 
-    if process.terminationStatus != 0 {
+    if exitCode != 0 {
+      let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+      let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
       throw WorktreeCreationError.gitCommandFailed(errorOutput.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
@@ -642,5 +621,21 @@ public actor GitWorktreeService {
   public func hasUncommittedChanges(at repoPath: String) async throws -> Bool {
     let output = try await runGitCommand(["status", "--porcelain"], at: repoPath)
     return !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+
+  // MARK: - Worktree Removal
+
+  /// Removes a worktree and its associated branch
+  /// - Parameter worktreePath: Path to the worktree to remove
+  public func removeWorktree(at worktreePath: String) async throws {
+    print("[GitWorktreeService] removeWorktree: \(worktreePath)")
+
+    // Find git root from the worktree
+    let gitRoot = try await findGitRoot(at: worktreePath)
+
+    // Run: git worktree remove <path> --force
+    try await runGitCommand(["worktree", "remove", worktreePath, "--force"], at: gitRoot)
+
+    print("[GitWorktreeService] Worktree removed successfully")
   }
 }

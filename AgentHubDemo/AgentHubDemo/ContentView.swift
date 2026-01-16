@@ -36,6 +36,16 @@ struct ContentView: View {
   /// The view model managing CLI session state and business logic.
   @State private var viewModel: CLISessionsViewModel
 
+  /// Intelligence overlay state
+  @State private var isShowingIntelligenceOverlay = false
+  @State private var intelligenceViewModel: IntelligenceViewModel
+
+  /// Monitor service for tracking CLI sessions
+  private let monitorService: CLISessionMonitorService
+
+  /// Git worktree service for orchestration
+  private let gitService: GitWorktreeService
+
   /// Optional stats service for popover mode display
   var statsService: GlobalStatsService?
 
@@ -43,48 +53,57 @@ struct ContentView: View {
   var displaySettings: StatsDisplaySettings?
 
   /// Creates a new content view with all required dependencies.
-  ///
-  /// Initializes the monitoring service and Claude client, then constructs
-  /// the view model with these dependencies. If the Claude client fails to
-  /// initialize, the view model will receive `nil` and should handle this
-  /// gracefully.
-  ///
-  /// - Parameters:
-  ///   - statsService: Optional stats service for popover mode
-  ///   - displaySettings: Optional settings controlling stats display mode
   init(
     statsService: GlobalStatsService? = nil,
     displaySettings: StatsDisplaySettings? = nil
   ) {
     let service = CLISessionMonitorService()
+    let git = GitWorktreeService()
     let claudeClient = try? ClaudeCodeClient(configuration: .default)
     _viewModel = State(initialValue: CLISessionsViewModel(
       monitorService: service,
       claudeClient: claudeClient
     ))
+    _intelligenceViewModel = State(initialValue: IntelligenceViewModel(
+      gitService: git,
+      monitorService: service
+    ))
+    self.monitorService = service
+    self.gitService = git
     self.statsService = statsService
     self.displaySettings = displaySettings
   }
 
   var body: some View {
-    CLISessionsListView(viewModel: viewModel)
-      .frame(minWidth: 400, minHeight: 600)
-      .toolbar(removing: .title)
-      .toolbar {
-        ToolbarItem(placement: .principal) {
-          HStack {
-            Spacer()
-            // Intelligence button - always visible
-            IntelligencePopoverButton()
-            if let settings = displaySettings,
-               settings.isPopoverMode,
-               let service = statsService {
-              GlobalStatsPopoverButton(service: service)
+    ZStack(alignment: .top) {
+      // Main content
+      CLISessionsListView(viewModel: viewModel)
+        .frame(minWidth: 400, minHeight: 600)
+        .toolbar(removing: .title)
+        .toolbar {
+          ToolbarItem(placement: .principal) {
+            HStack {
+              Spacer()
+              // Intelligence button - always visible
+              IntelligencePopoverButton(isShowingOverlay: $isShowingIntelligenceOverlay)
+              if let settings = displaySettings,
+                 settings.isPopoverMode,
+                 let service = statsService {
+                GlobalStatsPopoverButton(service: service)
+              }
             }
+            .frame(maxWidth: .infinity)
           }
-          .frame(maxWidth: .infinity)
         }
+
+      // Intelligence overlay - full screen
+      if isShowingIntelligenceOverlay {
+        IntelligenceOverlayView(
+          viewModel: $intelligenceViewModel,
+          isPresented: $isShowingIntelligenceOverlay
+        )
       }
+    }
   }
 }
 

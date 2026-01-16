@@ -21,7 +21,12 @@ public struct CLIRepositoryTreeView: View {
   let onToggleMonitoring: (CLISession) -> Void
   let onCreateWorktree: () -> Void
   let onOpenTerminalForWorktree: (WorktreeBranch) -> Void
+  let onDeleteWorktree: ((WorktreeBranch) -> Void)?
   var showLastMessage: Bool = false
+  var isDebugMode: Bool = false
+
+  @State private var worktreeToDelete: WorktreeBranch?
+  @State private var showDeleteConfirmation = false
 
   public init(
     repository: SelectedRepository,
@@ -34,7 +39,9 @@ public struct CLIRepositoryTreeView: View {
     onToggleMonitoring: @escaping (CLISession) -> Void,
     onCreateWorktree: @escaping () -> Void,
     onOpenTerminalForWorktree: @escaping (WorktreeBranch) -> Void,
-    showLastMessage: Bool = false
+    onDeleteWorktree: ((WorktreeBranch) -> Void)? = nil,
+    showLastMessage: Bool = false,
+    isDebugMode: Bool = false
   ) {
     self.repository = repository
     self.onRemove = onRemove
@@ -46,7 +53,9 @@ public struct CLIRepositoryTreeView: View {
     self.onToggleMonitoring = onToggleMonitoring
     self.onCreateWorktree = onCreateWorktree
     self.onOpenTerminalForWorktree = onOpenTerminalForWorktree
+    self.onDeleteWorktree = onDeleteWorktree
     self.showLastMessage = showLastMessage
+    self.isDebugMode = isDebugMode
   }
 
   public var body: some View {
@@ -62,11 +71,16 @@ public struct CLIRepositoryTreeView: View {
             isExpanded: worktree.isExpanded,
             onToggleExpanded: { onToggleWorktreeExpanded(worktree) },
             onOpenTerminal: { onOpenTerminalForWorktree(worktree) },
+            onDeleteWorktree: {
+              worktreeToDelete = worktree
+              showDeleteConfirmation = true
+            },
             onConnectSession: onConnectSession,
             onCopySessionId: onCopySessionId,
             isSessionMonitored: isSessionMonitored,
             onToggleMonitoring: onToggleMonitoring,
-            showLastMessage: showLastMessage
+            showLastMessage: showLastMessage,
+            isDebugMode: isDebugMode
           )
           .padding(.leading, 12)
         }
@@ -74,6 +88,21 @@ public struct CLIRepositoryTreeView: View {
     }
     .padding(6)
     .agentHubCard(isHighlighted: repository.activeSessionCount > 0)
+    .alert("Delete Worktree?", isPresented: $showDeleteConfirmation) {
+      Button("Cancel", role: .cancel) {
+        worktreeToDelete = nil
+      }
+      Button("Delete", role: .destructive) {
+        if let worktree = worktreeToDelete {
+          onDeleteWorktree?(worktree)
+          worktreeToDelete = nil
+        }
+      }
+    } message: {
+      if let worktree = worktreeToDelete {
+        Text("Delete worktree at:\n\(worktree.path)\n\nThis action cannot be undone.")
+      }
+    }
   }
 
   // MARK: - Repository Header
