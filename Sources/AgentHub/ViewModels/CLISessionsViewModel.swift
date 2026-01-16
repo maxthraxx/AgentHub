@@ -26,6 +26,7 @@ public final class CLISessionsViewModel {
   private let searchService: GlobalSearchService
   private let claudeClient: ClaudeCode?
   private let worktreeService = GitWorktreeService()
+  private let observationService: SessionObservationService
 
   // MARK: - State
 
@@ -117,6 +118,7 @@ public final class CLISessionsViewModel {
   // MARK: - Private
 
   private var subscriptionTask: Task<Void, Never>?
+  private var observationServiceTask: Task<Void, Never>?
   private let persistenceKey = "CLISessionsSelectedRepositories"
 
   // MARK: - Initialization
@@ -127,6 +129,7 @@ public final class CLISessionsViewModel {
     self.searchService = GlobalSearchService()
     self.claudeClient = claudeClient
     self.fileWatcher = SessionFileWatcher()
+    self.observationService = SessionObservationService()
     self.showLastMessage = UserDefaults.standard.bool(forKey: "CLISessionsShowLastMessage")
 
     // Load approval timeout with default of 5 seconds
@@ -134,6 +137,7 @@ public final class CLISessionsViewModel {
     self.approvalTimeoutSeconds = savedTimeout > 0 ? savedTimeout : 5
 
     setupSubscriptions()
+    setupObservationServiceSubscription()
     restorePersistedRepositories()
     requestNotificationPermissions()
 
@@ -160,6 +164,15 @@ public final class CLISessionsViewModel {
       for await repositories in self.monitorService.repositoriesPublisher.values {
         guard !Task.isCancelled else { break }
 
+        // Extract all sessions for auto-observe
+        let allSessions = repositories.flatMap { $0.worktrees.flatMap(\.sessions) }
+
+        // Auto-observe new sessions
+        Task { [weak self] in
+          guard let self = self else { return }
+          await self.observationService.processAndAutoObserve(sessions: allSessions)
+        }
+
         await MainActor.run { [weak self] in
           guard let self = self else { return }
           self.selectedRepositories = repositories
@@ -170,6 +183,39 @@ public final class CLISessionsViewModel {
           // Check for pending auto-observe
           self.processPendingAutoObserve()
         }
+      }
+    }
+  }
+
+  /// Sets up subscription to observation service for syncing observed sessions to monitoring
+  private func setupObservationServiceSubscription() {
+    observationServiceTask = Task { [weak self] in
+      guard let self = self else { return }
+
+      for await observedIds in self.observationService.observedSessionIdsPublisher.values {
+        guard !Task.isCancelled else { break }
+
+        await MainActor.run { [weak self] in
+          self?.syncObservedSessions(observedIds)
+        }
+      }
+    }
+  }
+
+  /// Syncs observed session IDs from observation service to actual monitoring state
+  private func syncObservedSessions(_ observedIds: Set<String>) {
+    // Find sessions to start monitoring
+    let toStart = observedIds.subtracting(monitoredSessionIds)
+    // Find sessions to stop monitoring
+    let toStop = monitoredSessionIds.subtracting(observedIds)
+
+    for sessionId in toStop {
+      stopMonitoring(sessionId: sessionId)
+    }
+
+    for sessionId in toStart {
+      if let session = findSession(byId: sessionId) {
+        startMonitoring(session: session)
       }
     }
   }
@@ -487,14 +533,21 @@ public final class CLISessionsViewModel {
     }
   }
 
+  /// Find a session by its ID
+  public func findSession(byId sessionId: String) -> CLISession? {
+    allSessions.first { $0.id == sessionId }
+  }
+
   // MARK: - Monitoring Management
 
-  /// Toggle monitoring for a session
+  /// Toggle monitoring for a session (goes through observation service)
   public func toggleMonitoring(for session: CLISession) {
-    if monitoredSessionIds.contains(session.id) {
-      stopMonitoring(session: session)
-    } else {
-      startMonitoring(session: session)
+    Task {
+      if await observationService.isObserving(sessionId: session.id) {
+        await observationService.stopObserving(sessionId: session.id)
+      } else {
+        await observationService.observe(sessionId: session.id)
+      }
     }
   }
 
