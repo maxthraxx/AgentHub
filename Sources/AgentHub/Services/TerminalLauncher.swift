@@ -12,17 +12,57 @@ import ClaudeCodeSDK
 /// Helper object to handle launching Terminal with Claude sessions
 public struct TerminalLauncher {
 
+  /// Closes any Terminal tab running Claude in the specified project directory
+  /// - Parameter projectPath: The project path (e.g., "/Users/james/Desktop/git/AgentHub")
+  public static func closeClaudeTerminalForProject(_ projectPath: String) {
+    // Extract the folder name from the path (e.g., "AgentHub")
+    let projectName = URL(fileURLWithPath: projectPath).lastPathComponent
+    guard !projectName.isEmpty else { return }
+
+    let script = """
+      tell application "Terminal"
+        set windowList to windows
+        repeat with w in windowList
+          try
+            set tabList to tabs of w
+            repeat with t in tabList
+              -- Check if tab name contains project folder AND claude is running
+              set tabName to name of t
+              set tabProcesses to processes of t
+              if tabName contains "\(projectName)" and tabProcesses contains "claude" then
+                close t
+              end if
+            end repeat
+          end try
+        end repeat
+      end tell
+      """
+
+    var error: NSDictionary?
+    if let appleScript = NSAppleScript(source: script) {
+      appleScript.executeAndReturnError(&error)
+      if let error = error {
+        print("[TerminalLauncher] AppleScript error closing terminal: \(error)")
+      }
+    }
+  }
+
   /// Launches Terminal with a Claude session resume command
   /// - Parameters:
   ///   - sessionId: The session ID to resume
   ///   - claudeClient: The Claude client with configuration
   ///   - projectPath: The project path to change to before resuming
+  ///   - initialPrompt: Optional initial prompt to send to Claude
   /// - Returns: An error if launching fails, nil on success
   public static func launchTerminalWithSession(
     _ sessionId: String,
     claudeClient: ClaudeCode,
-    projectPath: String
+    projectPath: String,
+    initialPrompt: String? = nil
   ) -> Error? {
+    // Close any existing Claude Terminal for this project first
+    closeClaudeTerminalForProject(projectPath)
+
     // Get the claude command from configuration
     let claudeCommand = claudeClient.configuration.command
 
@@ -46,12 +86,26 @@ public struct TerminalLauncher {
     let escapedSessionId = sessionId.replacingOccurrences(of: "\\", with: "\\\\")
       .replacingOccurrences(of: "\"", with: "\\\"")
 
+    // Escape the initial prompt if provided
+    let escapedPrompt = initialPrompt?
+      .replacingOccurrences(of: "\\", with: "\\\\")
+      .replacingOccurrences(of: "\"", with: "\\\"")
+      .replacingOccurrences(of: "'", with: "'\\''")
+
     // Construct the command
-    var command = ""
+    let command: String
     if !projectPath.isEmpty {
-      command = "cd \"\(escapedPath)\" && \"\(escapedClaudePath)\" -r \"\(escapedSessionId)\""
+      if let prompt = escapedPrompt {
+        command = "cd \"\(escapedPath)\" && \"\(escapedClaudePath)\" -r \"\(escapedSessionId)\" '\(prompt)'"
+      } else {
+        command = "cd \"\(escapedPath)\" && \"\(escapedClaudePath)\" -r \"\(escapedSessionId)\""
+      }
     } else {
-      command = "\"\(escapedClaudePath)\" -r \"\(escapedSessionId)\""
+      if let prompt = escapedPrompt {
+        command = "\"\(escapedClaudePath)\" -r \"\(escapedSessionId)\" '\(prompt)'"
+      } else {
+        command = "\"\(escapedClaudePath)\" -r \"\(escapedSessionId)\""
+      }
     }
 
     // Create a temporary script file

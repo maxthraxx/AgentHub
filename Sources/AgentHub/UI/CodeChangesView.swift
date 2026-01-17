@@ -7,6 +7,7 @@
 
 import SwiftUI
 import PierreDiffsSwift
+import ClaudeCodeSDK
 
 // MARK: - CodeChangesView
 
@@ -23,6 +24,7 @@ public struct CodeChangesView: View {
   @State private var diffStyle: DiffStyle = .unified
   @State private var overflowMode: OverflowMode = .wrap
   @State private var inlineEditorState = InlineEditorState()
+  @State private var claudeClient: ClaudeCode = createClaudeClient()
 
   public init(
     session: CLISession,
@@ -207,7 +209,9 @@ public struct CodeChangesView: View {
           fileName: URL(fileURLWithPath: diffData.fileName).lastPathComponent,
           diffStyle: $diffStyle,
           overflowMode: $overflowMode,
-          inlineEditorState: inlineEditorState
+          inlineEditorState: inlineEditorState,
+          claudeClient: claudeClient,
+          session: session
         )
         .frame(minHeight: 400)
         .id(selectedId)
@@ -358,6 +362,8 @@ private struct DiffViewWithHeader: View {
   @Binding var diffStyle: DiffStyle
   @Binding var overflowMode: OverflowMode
   @Bindable var inlineEditorState: InlineEditorState
+  let claudeClient: ClaudeCode
+  let session: CLISession
 
   @State private var webViewOpacity: Double = 1.0
   @State private var isWebViewReady = false
@@ -385,12 +391,18 @@ private struct DiffViewWithHeader: View {
               let anchorPoint = CGPoint(x: geometry.size.width / 2, y: localPoint.y)
               print("[CodeChangesView] anchorPoint: \(anchorPoint)")
 
+              // Determine which content to use based on the side
+              let fileContent = position.side == "left" ? oldContent : newContent
+              let lineContent = extractLine(from: fileContent, lineNumber: position.lineNumber)
+
               withAnimation(.easeOut(duration: 0.2)) {
                 inlineEditorState.show(
                   at: anchorPoint,
                   lineNumber: position.lineNumber,
                   side: position.side,
-                  fileName: fileName
+                  fileName: fileName,
+                  lineContent: lineContent,
+                  fullFileContent: fileContent
                 )
               }
             },
@@ -419,8 +431,30 @@ private struct DiffViewWithHeader: View {
             state: inlineEditorState,
             containerSize: geometry.size,
             onSubmit: { message, lineNumber, side, file in
-              // MVP: Print message to console (Claude integration later)
               print("[InlineEditor] Line \(lineNumber) (\(side)) in \(file): \(message)")
+
+              // Build contextual prompt with line context
+              let prompt = buildInlinePrompt(
+                question: message,
+                lineNumber: lineNumber,
+                lineContent: inlineEditorState.lineContent ?? "",
+                fileName: file
+              )
+
+              // Launch Terminal with resumed session and prompt
+              if let error = TerminalLauncher.launchTerminalWithSession(
+                session.id,
+                claudeClient: claudeClient,
+                projectPath: session.projectPath,
+                initialPrompt: prompt
+              ) {
+                inlineEditorState.errorMessage = error.localizedDescription
+              } else {
+                // Dismiss after successful launch
+                withAnimation(.easeOut(duration: 0.15)) {
+                  inlineEditorState.dismiss()
+                }
+              }
             }
           )
         }
@@ -496,6 +530,64 @@ private struct DiffViewWithHeader: View {
         webViewOpacity = 1
       }
     }
+  }
+
+  /// Extracts a specific line from file content
+  private func extractLine(from content: String, lineNumber: Int) -> String {
+    let lines = content.components(separatedBy: .newlines)
+    let index = lineNumber - 1 // Convert 1-indexed to 0-indexed
+    guard index >= 0 && index < lines.count else {
+      return ""
+    }
+    return lines[index]
+  }
+
+  /// Builds a contextual prompt for the inline question
+  private func buildInlinePrompt(
+    question: String,
+    lineNumber: Int,
+    lineContent: String,
+    fileName: String
+  ) -> String {
+    return """
+      I'm looking at line \(lineNumber) in \(fileName):
+      ```
+      \(lineContent)
+      ```
+
+      \(question)
+      """
+  }
+}
+
+// MARK: - Claude Client Factory
+
+/// Creates a ClaudeCode client with standard configuration
+private func createClaudeClient() -> ClaudeCode {
+  do {
+    var config = ClaudeCodeConfiguration.withNvmSupport()
+    let homeDir = NSHomeDirectory()
+
+    // Add local Claude installation path (highest priority)
+    let localClaudePath = "\(homeDir)/.claude/local"
+    if FileManager.default.fileExists(atPath: localClaudePath) {
+      config.additionalPaths.insert(localClaudePath, at: 0)
+    }
+
+    // Add common development tool paths
+    config.additionalPaths.append(contentsOf: [
+      "/usr/local/bin",
+      "/opt/homebrew/bin",
+      "/usr/bin",
+      "\(homeDir)/.bun/bin",
+      "\(homeDir)/.deno/bin",
+      "\(homeDir)/.cargo/bin",
+      "\(homeDir)/.local/bin"
+    ])
+
+    return try ClaudeCodeClient(configuration: config)
+  } catch {
+    fatalError("Failed to create ClaudeCodeClient: \(error)")
   }
 }
 

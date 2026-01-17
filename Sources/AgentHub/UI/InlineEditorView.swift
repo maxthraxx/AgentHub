@@ -9,7 +9,7 @@ import SwiftUI
 import AppKit
 
 /// A compact floating text editor for asking questions about specific diff lines.
-/// Appears below clicked lines in the diff view.
+/// Appears below clicked lines in the diff view. Submitting opens Terminal with the question.
 struct InlineEditorView: View {
 
   // MARK: - Properties
@@ -17,6 +17,7 @@ struct InlineEditorView: View {
   let lineNumber: Int
   let side: String
   let fileName: String
+  let errorMessage: String?
   let onSubmit: (String) -> Void
   let onDismiss: () -> Void
 
@@ -28,17 +29,38 @@ struct InlineEditorView: View {
   // MARK: - Body
 
   var body: some View {
-    HStack(spacing: 8) {
-      // Dismiss button
-      dismissButton
+    VStack(alignment: .leading, spacing: 0) {
+      // Input row
+      HStack(spacing: 8) {
+        // Dismiss button
+        dismissButton
 
-      // Text input
-      textEditorView
+        // Text input
+        textEditorView
 
-      // Send button (rounded square with arrow)
-      sendButton
+        // Send button (rounded square with arrow)
+        sendButton
+      }
+      .padding(8)
+
+      // Error message (if Terminal launch failed)
+      if let error = errorMessage {
+        Divider()
+          .padding(.horizontal, 8)
+
+        HStack(spacing: 8) {
+          Image(systemName: "exclamationmark.triangle.fill")
+            .foregroundColor(.red)
+
+          Text(error)
+            .font(.system(.caption, design: .default))
+            .foregroundColor(.red)
+            .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+      }
     }
-    .padding(8)
     .frame(width: 700)
     .background(Color(NSColor.controlBackgroundColor))
     .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -167,17 +189,31 @@ struct InlineEditorView: View {
 
 // MARK: - Preview
 
-#Preview {
+#Preview("Default") {
   InlineEditorView(
     lineNumber: 42,
     side: "right",
     fileName: "Example.swift",
+    errorMessage: nil,
     onSubmit: { message in
       print("Submitted: \(message)")
     },
     onDismiss: {
       print("Dismissed")
     }
+  )
+  .padding(40)
+  .background(Color.gray.opacity(0.2))
+}
+
+#Preview("With Error") {
+  InlineEditorView(
+    lineNumber: 42,
+    side: "right",
+    fileName: "Example.swift",
+    errorMessage: "Failed to launch Terminal",
+    onSubmit: { _ in },
+    onDismiss: {}
   )
   .padding(40)
   .background(Color.gray.opacity(0.2))
