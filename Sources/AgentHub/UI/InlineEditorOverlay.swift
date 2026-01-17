@@ -18,24 +18,20 @@ struct InlineEditorOverlay: View {
   let onSubmit: (String, Int, String, String) -> Void
 
   // Editor dimensions for positioning calculations
-  private let editorWidth: CGFloat = 320
-  private let editorHeight: CGFloat = 160
-  private let verticalOffset: CGFloat = 4
+  private let editorWidth: CGFloat = 700
+  private let editorHeight: CGFloat = 64
+  private let verticalOffset: CGFloat = 12
+  private let leadingPadding: CGFloat = 20
 
   // MARK: - Body
 
   var body: some View {
     ZStack {
-      // Background tap area for dismissal
-      if state.isShowing {
-        Color.clear
-          .contentShape(Rectangle())
-          .onTapGesture {
-            withAnimation(.easeOut(duration: 0.15)) {
-              state.dismiss()
-            }
-          }
-      }
+      // Allow taps to pass through to underlying diff view
+      // This enables clicking another line to immediately switch to it
+      // Dismiss via Escape key or by clicking a new line
+      Color.clear
+        .allowsHitTesting(false)
 
       // Positioned editor
       if state.isShowing {
@@ -72,14 +68,13 @@ struct InlineEditorOverlay: View {
     let anchorY = state.anchorPoint.y
     print("[InlineEditorOverlay] anchorPoint: \(state.anchorPoint), containerSize: \(containerSize)")
 
-    // Calculate X position (centered, but bounded to container)
-    var x = state.anchorPoint.x
+    // Calculate X position (leading-aligned)
     let halfWidth = editorWidth / 2
+    var x = leadingPadding + halfWidth  // Position at leading edge
 
-    // Keep within horizontal bounds
-    let minX = halfWidth + 10
+    // Keep within horizontal bounds (ensure right edge doesn't overflow)
     let maxX = containerSize.width - halfWidth - 10
-    x = max(minX, min(maxX, x))
+    x = min(x, maxX)
 
     // Calculate Y position (prefer below the line, but flip above if near bottom)
     // .position() places center of view, so add half the editor height

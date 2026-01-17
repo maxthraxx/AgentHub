@@ -22,6 +22,7 @@ public struct CodeChangesView: View {
   @State private var errorMessages: [UUID: String] = [:]
   @State private var diffStyle: DiffStyle = .unified
   @State private var overflowMode: OverflowMode = .wrap
+  @State private var inlineEditorState = InlineEditorState()
 
   public init(
     session: CLISession,
@@ -56,6 +57,17 @@ public struct CodeChangesView: View {
     }
     .frame(minWidth: 1200, idealWidth: .infinity, maxWidth: .infinity,
            minHeight: 800, idealHeight: .infinity, maxHeight: .infinity)
+    .onKeyPress(.escape) {
+      if inlineEditorState.isShowing {
+        withAnimation(.easeOut(duration: 0.15)) {
+          inlineEditorState.dismiss()
+        }
+        return .handled
+      } else {
+        onDismiss()
+        return .handled
+      }
+    }
     .onAppear {
       // Auto-select first file
       if selectedFileId == nil, let first = codeChangesState.consolidatedChanges.first {
@@ -102,7 +114,6 @@ public struct CodeChangesView: View {
       Button("Close") {
         onDismiss()
       }
-      .keyboardShortcut(.escape)
     }
     .padding()
     .background(Color.surfaceElevated)
@@ -195,7 +206,8 @@ public struct CodeChangesView: View {
           newContent: diffData.newContent,
           fileName: URL(fileURLWithPath: diffData.fileName).lastPathComponent,
           diffStyle: $diffStyle,
-          overflowMode: $overflowMode
+          overflowMode: $overflowMode,
+          inlineEditorState: inlineEditorState
         )
         .frame(minHeight: 400)
         .id(selectedId)
@@ -345,10 +357,10 @@ private struct DiffViewWithHeader: View {
   let fileName: String
   @Binding var diffStyle: DiffStyle
   @Binding var overflowMode: OverflowMode
+  @Bindable var inlineEditorState: InlineEditorState
 
   @State private var webViewOpacity: Double = 1.0
   @State private var isWebViewReady = false
-  @State private var inlineEditorState = InlineEditorState()
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {

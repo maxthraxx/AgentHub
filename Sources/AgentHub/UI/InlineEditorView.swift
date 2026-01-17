@@ -23,25 +23,23 @@ struct InlineEditorView: View {
   @State private var text: String = ""
   @FocusState private var isFocused: Bool
 
-  private let placeholder = "Ask about this line..."
+  private var placeholder: String { "Add suggestion to line \(lineNumber)" }
 
   // MARK: - Body
 
   var body: some View {
-    VStack(spacing: 0) {
-      // Header with line context
-      headerView
+    HStack(spacing: 8) {
+      // Dismiss button
+      dismissButton
 
-      Divider()
+      // Text input
+      textEditorView
 
-      // Input area
-      VStack(alignment: .leading, spacing: 6) {
-        textEditorView
-        controlsRow
-      }
-      .padding(10)
+      // Send button (rounded square with arrow)
+      sendButton
     }
-    .frame(width: 320)
+    .padding(8)
+    .frame(width: 700)
     .background(Color(NSColor.controlBackgroundColor))
     .clipShape(RoundedRectangle(cornerRadius: 10))
     .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
@@ -54,56 +52,15 @@ struct InlineEditorView: View {
     }
   }
 
-  // MARK: - Header
-
-  private var headerView: some View {
-    HStack(spacing: 6) {
-      // Line context
-      HStack(spacing: 4) {
-        Image(systemName: "text.line.first.and.arrowtriangle.forward")
-          .font(.system(size: 11))
-          .foregroundColor(.brandPrimary)
-
-        Text("Line \(lineNumber)")
-          .font(.system(.caption, design: .monospaced, weight: .medium))
-
-        Text("(\(sideLabel))")
-          .font(.caption)
-          .foregroundColor(.secondary)
-      }
-
-      Spacer()
-
-      // Close button
-      Button(action: onDismiss) {
-        Image(systemName: "xmark.circle.fill")
-          .font(.system(size: 14))
-          .foregroundColor(.secondary)
-      }
-      .buttonStyle(.plain)
-      .help("Close (Esc)")
-    }
-    .padding(.horizontal, 10)
-    .padding(.vertical, 8)
-  }
-
-  private var sideLabel: String {
-    switch side {
-    case "left": return "old"
-    case "right": return "new"
-    default: return side
-    }
-  }
-
   // MARK: - Text Editor
 
   private var textEditorView: some View {
-    ZStack(alignment: .topLeading) {
+    ZStack(alignment: .leading) {
       TextEditor(text: $text)
         .scrollContentBackground(.hidden)
         .focused($isFocused)
         .font(.system(.body, design: .default))
-        .frame(minHeight: 40, maxHeight: 80)
+        .frame(minHeight: 32, maxHeight: 60)
         .fixedSize(horizontal: false, vertical: true)
         .padding(6)
         .onKeyPress { key in
@@ -120,39 +77,59 @@ struct InlineEditorView: View {
       }
     }
     .background(
-      RoundedRectangle(cornerRadius: 6)
+      RoundedRectangle(cornerRadius: 8)
         .fill(Color(NSColor.textBackgroundColor))
     )
     .overlay(
-      RoundedRectangle(cornerRadius: 6)
+      RoundedRectangle(cornerRadius: 8)
         .stroke(isFocused ? Color.brandPrimary.opacity(0.5) : Color(NSColor.separatorColor), lineWidth: 1)
     )
   }
 
-  // MARK: - Controls Row
+  // MARK: - Dismiss Button
 
-  private var controlsRow: some View {
-    HStack {
-      // Hint text
-      Text("Enter to send")
-        .font(.caption2)
+  private var dismissButton: some View {
+    Button(action: onDismiss) {
+      Image(systemName: "xmark")
+        .font(.system(size: 12, weight: .medium))
         .foregroundColor(.secondary)
-
-      Spacer()
-
-      // Send button
-      Button(action: submitMessage) {
-        HStack(spacing: 3) {
-          Text("Send")
-            .font(.system(.caption, weight: .medium))
-          Image(systemName: "arrow.up.circle.fill")
-            .font(.system(size: 12))
-        }
-        .foregroundColor(isTextEmpty ? .secondary : .brandPrimary)
-      }
-      .buttonStyle(.plain)
-      .disabled(isTextEmpty)
+        .frame(width: 24, height: 24)
+        .contentShape(Rectangle())
     }
+    .buttonStyle(.plain)
+    .frame(width: 24, height: 24)
+    .background(
+      RoundedRectangle(cornerRadius: 6)
+        .fill(Color(NSColor.controlBackgroundColor))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 6)
+        .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+    )
+    .contentShape(Rectangle())
+    .help("Dismiss (Esc)")
+  }
+
+  // MARK: - Send Button
+
+  private var sendButton: some View {
+    Button(action: submitMessage) {
+      Image(systemName: "arrow.up")
+        .font(.system(size: 14, weight: .semibold))
+        .foregroundColor(.white)
+    }
+    .buttonStyle(.plain)
+    .frame(width: 32, height: 32)
+    .background(
+      RoundedRectangle(cornerRadius: 8)
+        .fill(isTextEmpty ? Color.secondary.opacity(0.3) : Color.brandPrimary)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 8)
+        .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+    )
+    .disabled(isTextEmpty)
+    .help("Send (Enter)")
   }
 
   // MARK: - Helpers
