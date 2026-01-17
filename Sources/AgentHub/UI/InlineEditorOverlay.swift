@@ -43,7 +43,7 @@ struct InlineEditorOverlay: View {
           fileName: state.fileName,
           errorMessage: state.errorMessage,
           onSubmit: { message in
-            // Submit will launch Terminal and then dismiss (if successful)
+            // Submit will open Terminal with resumed session
             onSubmit(message, state.lineNumber, state.side, state.fileName)
           },
           onDismiss: {

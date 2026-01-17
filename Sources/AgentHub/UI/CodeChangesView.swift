@@ -207,11 +207,13 @@ public struct CodeChangesView: View {
           oldContent: diffData.oldContent,
           newContent: diffData.newContent,
           fileName: URL(fileURLWithPath: diffData.fileName).lastPathComponent,
+          filePath: diffData.fileName,
           diffStyle: $diffStyle,
           overflowMode: $overflowMode,
           inlineEditorState: inlineEditorState,
           claudeClient: claudeClient,
-          session: session
+          session: session,
+          onDismissView: onDismiss
         )
         .frame(minHeight: 400)
         .id(selectedId)
@@ -344,10 +346,22 @@ public struct CodeChangesView: View {
 
 // MARK: - DiffInputData
 
-/// Internal struct to hold diff data for rendering
+/// Value type that encapsulates the data needed to render a file diff.
+///
+/// Used internally by `CodeChangesView` to pass consolidated diff data to
+/// `DiffViewWithHeader` for rendering. This separates the data transformation
+/// logic (in `CodeChangesView`) from the rendering logic (in `DiffViewWithHeader`).
+///
+/// - Note: The `oldContent` and `newContent` are the full file contents,
+///   not just the changed lines. The diff algorithm computes the differences.
 private struct DiffInputData {
+  /// The original file content before changes (left side of diff)
   let oldContent: String
+
+  /// The modified file content after changes (right side of diff)
   let newContent: String
+
+  /// The file path/name displayed in the diff header
   let fileName: String
 }
 
@@ -358,12 +372,23 @@ private struct DiffInputData {
 private struct DiffViewWithHeader: View {
   let oldContent: String
   let newContent: String
+
+  /// The file name displayed in the header (e.g., "Example.swift")
   let fileName: String
+
+  /// The complete file path used for inline editor context (e.g., "/Users/.../Example.swift")
+  let filePath: String
+
   @Binding var diffStyle: DiffStyle
   @Binding var overflowMode: OverflowMode
   @Bindable var inlineEditorState: InlineEditorState
   let claudeClient: ClaudeCode
   let session: CLISession
+
+  /// Callback to dismiss the entire diff view.
+  /// Called when the user submits from the inline editor and Terminal opens successfully,
+  /// since the session continues in Terminal and the diff view won't receive updates.
+  let onDismissView: () -> Void
 
   @State private var webViewOpacity: Double = 1.0
   @State private var isWebViewReady = false
@@ -400,7 +425,7 @@ private struct DiffViewWithHeader: View {
                   at: anchorPoint,
                   lineNumber: position.lineNumber,
                   side: position.side,
-                  fileName: fileName,
+                  fileName: filePath,
                   lineContent: lineContent,
                   fullFileContent: fileContent
                 )
@@ -441,7 +466,7 @@ private struct DiffViewWithHeader: View {
                 fileName: file
               )
 
-              // Launch Terminal with resumed session and prompt
+              // Open Terminal with resumed session
               if let error = TerminalLauncher.launchTerminalWithSession(
                 session.id,
                 claudeClient: claudeClient,
@@ -450,10 +475,8 @@ private struct DiffViewWithHeader: View {
               ) {
                 inlineEditorState.errorMessage = error.localizedDescription
               } else {
-                // Dismiss after successful launch
-                withAnimation(.easeOut(duration: 0.15)) {
-                  inlineEditorState.dismiss()
-                }
+                // Dismiss entire diff view - session continues in Terminal
+                onDismissView()
               }
             }
           )

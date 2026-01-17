@@ -9,7 +9,7 @@ import SwiftUI
 import AppKit
 
 /// A compact floating text editor for asking questions about specific diff lines.
-/// Appears below clicked lines in the diff view. Submitting opens Terminal with the question.
+/// Appears below clicked lines in the diff view.
 struct InlineEditorView: View {
 
   // MARK: - Properties
@@ -30,20 +30,9 @@ struct InlineEditorView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      // Input row
-      HStack(spacing: 8) {
-        // Dismiss button
-        dismissButton
+      inputView
 
-        // Text input
-        textEditorView
-
-        // Send button (rounded square with arrow)
-        sendButton
-      }
-      .padding(8)
-
-      // Error message (if Terminal launch failed)
+      // Error message
       if let error = errorMessage {
         Divider()
           .padding(.horizontal, 8)
@@ -72,6 +61,22 @@ struct InlineEditorView: View {
     .onAppear {
       isFocused = true
     }
+  }
+
+  // MARK: - Input View
+
+  private var inputView: some View {
+    HStack(spacing: 8) {
+      // Dismiss button
+      dismissButton
+
+      // Text input
+      textEditorView
+
+      // Send button (rounded square with arrow)
+      sendButton
+    }
+    .padding(8)
   }
 
   // MARK: - Text Editor
@@ -189,7 +194,7 @@ struct InlineEditorView: View {
 
 // MARK: - Preview
 
-#Preview("Default") {
+#Preview("Default - Input Mode") {
   InlineEditorView(
     lineNumber: 42,
     side: "right",
@@ -211,7 +216,7 @@ struct InlineEditorView: View {
     lineNumber: 42,
     side: "right",
     fileName: "Example.swift",
-    errorMessage: "Failed to launch Terminal",
+    errorMessage: "Failed to connect to Claude",
     onSubmit: { _ in },
     onDismiss: {}
   )

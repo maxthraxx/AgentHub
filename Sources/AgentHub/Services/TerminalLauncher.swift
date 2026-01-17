@@ -12,37 +12,107 @@ import ClaudeCodeSDK
 /// Helper object to handle launching Terminal with Claude sessions
 public struct TerminalLauncher {
 
-  /// Closes any Terminal tab running Claude in the specified project directory
-  /// - Parameter projectPath: The project path (e.g., "/Users/james/Desktop/git/AgentHub")
-  public static func closeClaudeTerminalForProject(_ projectPath: String) {
-    // Extract the folder name from the path (e.g., "AgentHub")
-    let projectName = URL(fileURLWithPath: projectPath).lastPathComponent
-    guard !projectName.isEmpty else { return }
+  /// Runs a Claude session in the background without opening Terminal
+  /// - Parameters:
+  ///   - sessionId: The session ID to resume
+  ///   - claudeClient: The Claude client with configuration
+  ///   - projectPath: The project path to use as working directory
+  ///   - prompt: The prompt to send to Claude
+  ///   - onOutput: Called with each chunk of output text
+  ///   - onComplete: Called when the process finishes (with error if failed)
+  @MainActor
+  public static func runSessionInBackground(
+    _ sessionId: String,
+    claudeClient: ClaudeCode,
+    projectPath: String,
+    prompt: String,
+    onOutput: @escaping @MainActor (String) -> Void,
+    onComplete: @escaping @MainActor (Error?) -> Void
+  ) {
+    let claudeCommand = claudeClient.configuration.command
 
-    let script = """
-      tell application "Terminal"
-        set windowList to windows
-        repeat with w in windowList
-          try
-            set tabList to tabs of w
-            repeat with t in tabList
-              -- Check if tab name contains project folder AND claude is running
-              set tabName to name of t
-              set tabProcesses to processes of t
-              if tabName contains "\(projectName)" and tabProcesses contains "claude" then
-                close t
-              end if
-            end repeat
-          end try
-        end repeat
-      end tell
-      """
+    guard let claudeExecutablePath = findClaudeExecutable(
+      command: claudeCommand,
+      additionalPaths: claudeClient.configuration.additionalPaths
+    ) else {
+      let error = NSError(
+        domain: "TerminalLauncher",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "Could not find '\(claudeCommand)' command. Please ensure Claude Code CLI is installed."]
+      )
+      onComplete(error)
+      return
+    }
 
-    var error: NSDictionary?
-    if let appleScript = NSAppleScript(source: script) {
-      appleScript.executeAndReturnError(&error)
-      if let error = error {
-        print("[TerminalLauncher] AppleScript error closing terminal: \(error)")
+    Task.detached {
+      let process = Process()
+      process.executableURL = URL(fileURLWithPath: claudeExecutablePath)
+      process.arguments = ["-r", sessionId, prompt]
+
+      if !projectPath.isEmpty {
+        process.currentDirectoryURL = URL(fileURLWithPath: projectPath)
+      }
+
+      // Set up environment with PATH for child processes
+      var environment = ProcessInfo.processInfo.environment
+      let additionalPaths = claudeClient.configuration.additionalPaths.joined(separator: ":")
+      if let existingPath = environment["PATH"] {
+        environment["PATH"] = "\(additionalPaths):\(existingPath)"
+      } else {
+        environment["PATH"] = additionalPaths
+      }
+      process.environment = environment
+
+      let stdoutPipe = Pipe()
+      let stderrPipe = Pipe()
+      process.standardOutput = stdoutPipe
+      process.standardError = stderrPipe
+
+      // Handle stdout streaming
+      stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
+        let data = handle.availableData
+        if !data.isEmpty, let text = String(data: data, encoding: .utf8) {
+          Task { @MainActor in
+            onOutput(text)
+          }
+        }
+      }
+
+      // Handle stderr (also stream to output for visibility)
+      stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+        let data = handle.availableData
+        if !data.isEmpty, let text = String(data: data, encoding: .utf8) {
+          Task { @MainActor in
+            onOutput(text)
+          }
+        }
+      }
+
+      process.terminationHandler = { process in
+        // Clean up handlers
+        stdoutPipe.fileHandleForReading.readabilityHandler = nil
+        stderrPipe.fileHandleForReading.readabilityHandler = nil
+
+        Task { @MainActor in
+          if process.terminationStatus != 0 {
+            let error = NSError(
+              domain: "TerminalLauncher",
+              code: Int(process.terminationStatus),
+              userInfo: [NSLocalizedDescriptionKey: "Process exited with status \(process.terminationStatus)"]
+            )
+            onComplete(error)
+          } else {
+            onComplete(nil)
+          }
+        }
+      }
+
+      do {
+        try process.run()
+      } catch {
+        Task { @MainActor in
+          onComplete(error)
+        }
       }
     }
   }
@@ -60,9 +130,6 @@ public struct TerminalLauncher {
     projectPath: String,
     initialPrompt: String? = nil
   ) -> Error? {
-    // Close any existing Claude Terminal for this project first
-    closeClaudeTerminalForProject(projectPath)
-
     // Get the claude command from configuration
     let claudeCommand = claudeClient.configuration.command
 

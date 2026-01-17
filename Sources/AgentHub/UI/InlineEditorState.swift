@@ -35,7 +35,7 @@ final class InlineEditorState {
 
   // MARK: - Error State
 
-  /// Error message if Terminal launch failed
+  /// Error message if request failed
   var errorMessage: String?
 
   /// Shows the editor at the specified position with context
