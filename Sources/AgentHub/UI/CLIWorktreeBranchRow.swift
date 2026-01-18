@@ -19,6 +19,7 @@ public struct CLIWorktreeBranchRow: View {
   let onDeleteWorktree: (() -> Void)?
   let onConnectSession: (CLISession) -> Void
   let onCopySessionId: (CLISession) -> Void
+  let onOpenSessionFile: (CLISession) -> Void
   let isSessionMonitored: (String) -> Bool
   let onToggleMonitoring: (CLISession) -> Void
   var showLastMessage: Bool = false
@@ -55,6 +56,7 @@ public struct CLIWorktreeBranchRow: View {
     onDeleteWorktree: (() -> Void)? = nil,
     onConnectSession: @escaping (CLISession) -> Void,
     onCopySessionId: @escaping (CLISession) -> Void,
+    onOpenSessionFile: @escaping (CLISession) -> Void,
     isSessionMonitored: @escaping (String) -> Bool,
     onToggleMonitoring: @escaping (CLISession) -> Void,
     showLastMessage: Bool = false,
@@ -68,6 +70,7 @@ public struct CLIWorktreeBranchRow: View {
     self.onDeleteWorktree = onDeleteWorktree
     self.onConnectSession = onConnectSession
     self.onCopySessionId = onCopySessionId
+    self.onOpenSessionFile = onOpenSessionFile
     self.isSessionMonitored = isSessionMonitored
     self.onToggleMonitoring = onToggleMonitoring
     self.showLastMessage = showLastMessage
@@ -175,6 +178,7 @@ public struct CLIWorktreeBranchRow: View {
                     isMonitoring: isSessionMonitored(session.id),
                     onConnect: { onConnectSession(session) },
                     onCopyId: { onCopySessionId(session) },
+                    onOpenFile: { onOpenSessionFile(session) },
                     onToggleMonitoring: { onToggleMonitoring(session) },
                     showLastMessage: showLastMessage
                   )
@@ -230,6 +234,7 @@ public struct CLIWorktreeBranchRow: View {
       onOpenTerminal: {},
       onConnectSession: { _ in },
       onCopySessionId: { _ in },
+      onOpenSessionFile: { _ in },
       isSessionMonitored: { _ in false },
       onToggleMonitoring: { _ in }
     )
@@ -259,6 +264,7 @@ public struct CLIWorktreeBranchRow: View {
       onOpenTerminal: {},
       onConnectSession: { _ in },
       onCopySessionId: { _ in },
+      onOpenSessionFile: { _ in },
       isSessionMonitored: { _ in false },
       onToggleMonitoring: { _ in }
     )
@@ -278,6 +284,7 @@ public struct CLIWorktreeBranchRow: View {
       onOpenTerminal: {},
       onConnectSession: { _ in },
       onCopySessionId: { _ in },
+      onOpenSessionFile: { _ in },
       isSessionMonitored: { _ in false },
       onToggleMonitoring: { _ in }
     )
