@@ -41,6 +41,7 @@ public struct MonitoringCardView: View {
 
   @State private var codeChangesSheetItem: CodeChangesSheetItem?
   @State private var gitDiffSheetItem: GitDiffSheetItem?
+  @State private var showTerminal: Bool = false
 
   public init(
     session: CLISession,
@@ -73,7 +74,13 @@ public struct MonitoringCardView: View {
       statusRow
 
       // Monitoring panel content (reuses existing component)
-      SessionMonitorPanel(state: state)
+      SessionMonitorPanel(
+        state: state,
+        showTerminal: showTerminal,
+        sessionId: session.id,
+        projectPath: session.projectPath,
+        claudeClient: claudeClient
+      )
     }
     .padding(12)
     .agentHubCard(isHighlighted: isHighlighted)
@@ -148,6 +155,16 @@ public struct MonitoringCardView: View {
       .buttonStyle(.plain)
       .help("View session transcript")
 
+      // Open in external terminal button (right after transcript)
+      Button(action: onConnect) {
+        Image(systemName: "rectangle.portrait.and.arrow.right")
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .agentHubChip()
+      }
+      .buttonStyle(.plain)
+      .help("Open in external Terminal")
+
       Spacer()
 
       // Code changes button (trailing)
@@ -171,7 +188,57 @@ public struct MonitoringCardView: View {
         .help("View code changes")
       }
 
-      // Git diff button (trailing)
+      // Terminal/List segmented control (custom capsule style)
+      HStack(spacing: 0) {
+        Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showTerminal = false } }) {
+          Image(systemName: "list.bullet")
+            .font(.caption)
+            .frame(width: 28, height: 20)
+            .foregroundColor(!showTerminal ? .white : .secondary)
+            .background(!showTerminal ? Color.brandPrimary : Color.clear)
+            .clipShape(Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+
+        Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showTerminal = true } }) {
+          Image(systemName: "terminal")
+            .font(.caption)
+            .frame(width: 28, height: 20)
+            .foregroundColor(showTerminal ? .white : .secondary)
+            .background(showTerminal ? Color.brandPrimary : Color.clear)
+            .clipShape(Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+      }
+      .padding(2)
+      .background(Color.secondary.opacity(0.15))
+      .clipShape(Capsule())
+      .animation(.easeInOut(duration: 0.2), value: showTerminal)
+
+      // Stop monitoring button (trailing)
+      Button(action: onStopMonitoring) {
+        Image(systemName: "xmark.circle.fill")
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .agentHubChip()
+      }
+      .buttonStyle(.plain)
+      .help("Stop monitoring")
+    }
+  }
+
+  // MARK: - Status Row
+
+  private var statusRow: some View {
+    HStack(spacing: 6) {
+      pathView
+      branchPill
+
+      Spacer()
+
+      // Git diff button
       Button(action: {
         gitDiffSheetItem = GitDiffSheetItem(
           session: session,
@@ -189,44 +256,6 @@ public struct MonitoringCardView: View {
       }
       .buttonStyle(.plain)
       .help("View git unstaged changes")
-
-      // Connect button (trailing)
-      Button(action: onConnect) {
-        Image(systemName: "terminal")
-          .font(.caption)
-          .foregroundColor(.brandPrimary)
-          .agentHubChip()
-      }
-      .buttonStyle(.plain)
-      .help("Open in Terminal")
-
-      // Stop monitoring button (trailing)
-      Button(action: onStopMonitoring) {
-        Image(systemName: "xmark.circle.fill")
-          .font(.caption)
-          .foregroundColor(.secondary)
-          .agentHubChip()
-      }
-      .buttonStyle(.plain)
-      .help("Stop monitoring")
-    }
-  }
-
-  // MARK: - Status Row
-
-  private var statusRow: some View {
-    ViewThatFits(in: .horizontal) {
-      // Horizontal layout for wider spaces
-      HStack(spacing: 6) {
-        pathView
-        branchPill
-      }
-
-      // Vertical layout for narrower spaces
-      VStack(alignment: .leading, spacing: 4) {
-        pathView
-        branchPill
-      }
     }
     .help(session.projectPath)
   }
