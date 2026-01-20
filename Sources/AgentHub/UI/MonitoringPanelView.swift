@@ -109,36 +109,52 @@ public struct MonitoringPanelView: View {
   // MARK: - Monitored Sessions List
 
   private var monitoredSessionsList: some View {
-    ScrollView {
-      LazyVStack(spacing: 12) {
-        ForEach(viewModel.monitoredSessions, id: \.session.id) { item in
-          let codeChangesState = item.state.map {
-            CodeChangesState.from(activities: $0.recentActivities)
-          }
+    GeometryReader { geometry in
+      ScrollView {
+        let useGrid = geometry.size.width >= DesignTokens.Breakpoint.gridThreshold
 
-          MonitoringCardView(
-            session: item.session,
-            state: item.state,
-            codeChangesState: codeChangesState,
-            claudeClient: claudeClient,
-            onStopMonitoring: {
-              viewModel.stopMonitoring(session: item.session)
-            },
-            onConnect: {
-              if let error = viewModel.connectToSession(item.session) {
-                print("Failed to connect: \(error.localizedDescription)")
-              }
-            },
-            onCopySessionId: {
-              viewModel.copySessionId(item.session)
-            },
-            onOpenSessionFile: {
-              openSessionFile(for: item.session)
-            }
-          )
+        if useGrid {
+          LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+            monitoredSessionsContent
+          }
+          .padding(12)
+        } else {
+          LazyVStack(spacing: 12) {
+            monitoredSessionsContent
+          }
+          .padding(12)
         }
       }
-      .padding(12)
+    }
+  }
+
+  @ViewBuilder
+  private var monitoredSessionsContent: some View {
+    ForEach(viewModel.monitoredSessions, id: \.session.id) { item in
+      let codeChangesState = item.state.map {
+        CodeChangesState.from(activities: $0.recentActivities)
+      }
+
+      MonitoringCardView(
+        session: item.session,
+        state: item.state,
+        codeChangesState: codeChangesState,
+        claudeClient: claudeClient,
+        onStopMonitoring: {
+          viewModel.stopMonitoring(session: item.session)
+        },
+        onConnect: {
+          if let error = viewModel.connectToSession(item.session) {
+            print("Failed to connect: \(error.localizedDescription)")
+          }
+        },
+        onCopySessionId: {
+          viewModel.copySessionId(item.session)
+        },
+        onOpenSessionFile: {
+          openSessionFile(for: item.session)
+        }
+      )
     }
   }
 
