@@ -655,33 +655,38 @@ public final class CLISessionsViewModel {
 
   /// Handles when a new session file is detected
   private func handleNewSessionFound(sessionId: String, pending: PendingHubSession, worktree: WorktreeBranch) {
-    // Refresh to get the real session object
+    // Refresh to get the real session object with retry loop
     Task {
-      await monitorService.refreshSessions()
+      // Retry loop: wait up to 5 seconds for session to appear in selectedRepositories
+      let maxAttempts = 25  // 25 × 200ms = 5 seconds
 
-      // Wait for the publisher to propagate to selectedRepositories
-      // The Combine subscription updates asynchronously on MainActor
-      try? await Task.sleep(for: .milliseconds(100))
+      for attempt in 1...maxAttempts {
+        await monitorService.refreshSessions()
 
-      // Find and monitor the new session
-      var found = false
-      for repo in selectedRepositories {
-        if let matchingWorktree = repo.worktrees.first(where: { $0.path == worktree.path }),
-           let session = matchingWorktree.sessions.first(where: { $0.id == sessionId }) {
-          // Remove pending only after finding the real session
-          pendingHubSessions.removeAll { $0.id == pending.id }
-          // Transfer terminal from pending key to real session ID
-          transferTerminal(fromPendingId: pending.id, toSessionId: session.id)
-          // Keep terminal view visible during transition
-          sessionsWithTerminalView.insert(session.id)
-          startMonitoring(session: session)
-          found = true
-          break
+        // Wait for the publisher to propagate to selectedRepositories
+        // The Combine subscription updates asynchronously on MainActor
+        try? await Task.sleep(for: .milliseconds(200))
+
+        // Find and monitor the new session (try path matching first)
+        var found = false
+        for repo in selectedRepositories {
+          if let matchingWorktree = repo.worktrees.first(where: { $0.path == worktree.path }),
+             let session = matchingWorktree.sessions.first(where: { $0.id == sessionId }) {
+            // Remove pending only after finding the real session
+            pendingHubSessions.removeAll { $0.id == pending.id }
+            // Transfer terminal from pending key to real session ID
+            transferTerminal(fromPendingId: pending.id, toSessionId: session.id)
+            // Keep terminal view visible during transition
+            sessionsWithTerminalView.insert(session.id)
+            startMonitoring(session: session)
+            found = true
+            break
+          }
         }
-      }
 
-      // Fallback: search by session ID alone if path matching failed
-      if !found {
+        if found { return }
+
+        // Fallback: search by session ID alone if path matching failed
         for repo in selectedRepositories {
           for wt in repo.worktrees {
             if let session = wt.sessions.first(where: { $0.id == sessionId }) {
@@ -691,16 +696,20 @@ public final class CLISessionsViewModel {
               // Keep terminal view visible during transition
               sessionsWithTerminalView.insert(session.id)
               startMonitoring(session: session)
-              found = true
-              break
+              return
             }
           }
-          if found { break }
+        }
+
+        // Log retry attempt (only if not the last attempt)
+        if attempt < maxAttempts {
+          print("[CLISessionsVM] Session \(sessionId.prefix(8)) not found, retrying (\(attempt)/\(maxAttempts))")
         }
       }
 
-      // If still not found, keep pending session visible (terminal continues working)
-      // This handles edge cases where session isn't immediately discoverable
+      // If still not found after all attempts, log warning
+      // Keep pending session visible (terminal continues working)
+      print("[CLISessionsVM] ⚠️ Failed to find session \(sessionId) after \(maxAttempts) attempts")
     }
   }
 
