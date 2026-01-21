@@ -630,11 +630,11 @@ private struct ConsolidatedFileRow: View {
       .padding(.vertical, 6)
       .background(
         RoundedRectangle(cornerRadius: 6)
-          .fill(isSelected ? Color.brandPrimary.opacity(0.15) : Color.clear)
+          .fill(isSelected ? Color.primary.opacity(0.15) : Color.clear)
       )
       .overlay(
         RoundedRectangle(cornerRadius: 6)
-          .stroke(isSelected ? Color.brandPrimary.opacity(0.3) : Color.clear, lineWidth: 1)
+          .stroke(isSelected ? Color.primary.opacity(0.3) : Color.clear, lineWidth: 1)
       )
       .contentShape(Rectangle())
     }
