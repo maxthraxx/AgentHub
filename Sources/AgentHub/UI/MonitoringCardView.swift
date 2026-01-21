@@ -113,6 +113,17 @@ public struct MonitoringCardView: View {
     }
     .padding(12)
     .agentHubCard(isHighlighted: isHighlighted)
+    .overlay(alignment: .topTrailing) {
+      Button(action: onStopMonitoring) {
+        Image(systemName: "xmark.circle.fill")
+          .font(.system(size: 18))
+          .foregroundColor(.secondary)
+          .shadow(color: .black.opacity(0.2), radius: 2, x: 0, y: 1)
+      }
+      .buttonStyle(.plain)
+      .help("Stop monitoring")
+      .offset(x: 8, y: -8)
+    }
     .sheet(item: $codeChangesSheetItem) { item in
       CodeChangesView(
         session: item.session,
@@ -256,16 +267,6 @@ public struct MonitoringCardView: View {
       .background(Color.secondary.opacity(0.15))
       .clipShape(Capsule())
       .animation(.easeInOut(duration: 0.2), value: showTerminal)
-
-      // Stop monitoring button (trailing)
-      Button(action: onStopMonitoring) {
-        Image(systemName: "xmark.circle.fill")
-          .font(.caption)
-          .foregroundColor(.secondary)
-          .agentHubChip()
-      }
-      .buttonStyle(.plain)
-      .help("Stop monitoring")
     }
   }
 
