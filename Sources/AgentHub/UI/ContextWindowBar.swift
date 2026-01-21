@@ -13,6 +13,7 @@ import SwiftUI
 struct ContextWindowBar: View {
   let percentage: Double
   let formattedUsage: String
+  var model: String? = nil
   @State private var showingHelp = false
 
   private var barColor: Color {
@@ -28,6 +29,9 @@ struct ContextWindowBar: View {
           .font(.caption2)
           .foregroundColor(.secondary)
         Spacer()
+        if let model = model {
+          ModelBadge(model: model)
+        }
         Text(formattedUsage)
           .font(.caption2)
           .monospacedDigit()
@@ -76,17 +80,20 @@ struct ContextWindowBar: View {
   VStack(spacing: 20) {
     ContextWindowBar(
       percentage: 0.07,
-      formattedUsage: "~15K / 200K (~7%)"
+      formattedUsage: "~15K / 200K (~7%)",
+      model: "claude-opus-4-20250514"
     )
 
     ContextWindowBar(
       percentage: 0.45,
-      formattedUsage: "~90K / 200K (~45%)"
+      formattedUsage: "~90K / 200K (~45%)",
+      model: "claude-sonnet-4-20250514"
     )
 
     ContextWindowBar(
       percentage: 0.78,
-      formattedUsage: "~156K / 200K (~78%)"
+      formattedUsage: "~156K / 200K (~78%)",
+      model: "claude-haiku-4-20250514"
     )
 
     ContextWindowBar(
