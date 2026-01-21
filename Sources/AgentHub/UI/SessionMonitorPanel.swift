@@ -41,21 +41,21 @@ public struct SessionMonitorPanel: View {
 
   public var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      // Status indicator and model (only when state exists)
+      // Status indicator (only when state exists and not in terminal mode)
       if let state = state {
-        HStack {
-          StatusBadge(status: state.status)
-          Spacer()
-          if let model = state.model {
-            ModelBadge(model: model)
+        if !showTerminal {
+          HStack {
+            StatusBadge(status: state.status)
+            Spacer()
           }
         }
 
-        // Context window usage bar
+        // Context window usage bar (always visible)
         if state.inputTokens > 0 {
           ContextWindowBar(
             percentage: state.contextWindowUsagePercentage,
-            formattedUsage: state.formattedContextUsage
+            formattedUsage: state.formattedContextUsage,
+            model: state.model
           )
         }
       }

@@ -116,7 +116,7 @@ public struct MonitoringCardView: View {
     .overlay(alignment: .topTrailing) {
       Button(action: onStopMonitoring) {
         Image(systemName: "xmark.circle.fill")
-          .font(.system(size: 18))
+          .font(.system(size: 16))
           .foregroundColor(.secondary)
           .shadow(color: .black.opacity(0.2), radius: 2, x: 0, y: 1)
       }

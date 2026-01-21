@@ -93,13 +93,13 @@ struct InlineEditorView: View {
         .onKeyPress { key in
           handleKeyPress(key)
         }
+        .padding(.top, 8)
 
       if text.isEmpty {
         Text(placeholder)
           .font(.body)
           .foregroundColor(.secondary)
-          .padding(.horizontal, 10)
-          .padding(.vertical, 14)
+          .padding(.leading, 11)
           .allowsHitTesting(false)
       }
     }

@@ -69,7 +69,7 @@ public struct MonitoringPanelView: View {
 
       // Layout toggle (only show when > 2 sessions total)
       let totalSessions = viewModel.monitoredSessionIds.count + viewModel.pendingHubSessions.count
-      if totalSessions > 2 {
+      if totalSessions >= 2 {
         HStack(spacing: 0) {
           Button(action: { withAnimation(.easeInOut(duration: 0.2)) { useGridLayout = false } }) {
             Image(systemName: "list.bullet")
@@ -121,15 +121,15 @@ public struct MonitoringPanelView: View {
 
   private var emptyState: some View {
     VStack(spacing: 12) {
-      Image(systemName: "eye.slash")
+      Image(systemName: "rectangle.on.rectangle")
         .font(.largeTitle)
         .foregroundColor(.secondary.opacity(0.5))
 
-      Text("No Sessions Monitored")
+      Text("Select a Session")
         .font(.headline)
         .foregroundColor(.secondary)
 
-      Text("Click the monitor button on a session to start tracking its activity in real-time.")
+      Text("Choose a session from the sidebar to get started.")
         .font(.caption)
         .foregroundColor(.secondary)
         .multilineTextAlignment(.center)
@@ -144,7 +144,7 @@ public struct MonitoringPanelView: View {
   private var monitoredSessionsList: some View {
     ScrollView {
       if useGridLayout {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+        LazyVGrid(columns: [GridItem(.flexible(), alignment: .top), GridItem(.flexible(), alignment: .top)], spacing: 12) {
           monitoredSessionsContent
         }
         .padding(12)
@@ -156,6 +156,13 @@ public struct MonitoringPanelView: View {
       }
     }
     .animation(.easeInOut(duration: 0.2), value: useGridLayout)
+    .onChange(of: viewModel.monitoredSessionIds.count + viewModel.pendingHubSessions.count) { _, newCount in
+      if newCount < 2 && useGridLayout {
+        withAnimation(.easeInOut(duration: 0.2)) {
+          useGridLayout = false
+        }
+      }
+    }
   }
 
   @ViewBuilder
