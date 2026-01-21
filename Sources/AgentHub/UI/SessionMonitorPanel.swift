@@ -15,27 +15,33 @@ import SwiftUI
 public struct SessionMonitorPanel: View {
   let state: SessionMonitorState?
   let showTerminal: Bool
+  let terminalKey: String?  // Key for terminal storage (session ID or "pending-{pendingId}")
   let sessionId: String?
   let projectPath: String?
   let claudeClient: (any ClaudeCode)?
   let initialPrompt: String?
+  let viewModel: CLISessionsViewModel?
   let onPromptConsumed: (() -> Void)?
 
   public init(
     state: SessionMonitorState?,
     showTerminal: Bool = false,
+    terminalKey: String? = nil,
     sessionId: String? = nil,
     projectPath: String? = nil,
     claudeClient: (any ClaudeCode)? = nil,
     initialPrompt: String? = nil,
+    viewModel: CLISessionsViewModel? = nil,
     onPromptConsumed: (() -> Void)? = nil
   ) {
     self.state = state
     self.showTerminal = showTerminal
+    self.terminalKey = terminalKey
     self.sessionId = sessionId
     self.projectPath = projectPath
     self.claudeClient = claudeClient
     self.initialPrompt = initialPrompt
+    self.viewModel = viewModel
     self.onPromptConsumed = onPromptConsumed
   }
 
@@ -85,10 +91,12 @@ public struct SessionMonitorPanel: View {
 
         // Terminal view (preserved in hierarchy to maintain SwiftTerm state)
         EmbeddedTerminalView(
+          terminalKey: terminalKey ?? sessionId ?? "",
           sessionId: sessionId,
           projectPath: projectPath ?? "",
           claudeClient: claudeClient,
-          initialPrompt: initialPrompt
+          initialPrompt: initialPrompt,
+          viewModel: viewModel
         )
         .frame(minHeight: showTerminal ? 300 : 0, maxHeight: showTerminal ? .infinity : 0)
         .clipped()

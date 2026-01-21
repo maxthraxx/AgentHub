@@ -46,6 +46,8 @@ public struct MonitoringCardView: View {
   let claudeClient: (any ClaudeCode)?
   let showTerminal: Bool
   let initialPrompt: String?
+  let terminalKey: String?  // Key for terminal storage (session ID or "pending-{pendingId}")
+  let viewModel: CLISessionsViewModel?
   let onToggleTerminal: (Bool) -> Void
   let onStopMonitoring: () -> Void
   let onConnect: () -> Void
@@ -66,6 +68,8 @@ public struct MonitoringCardView: View {
     claudeClient: (any ClaudeCode)? = nil,
     showTerminal: Bool = false,
     initialPrompt: String? = nil,
+    terminalKey: String? = nil,
+    viewModel: CLISessionsViewModel? = nil,
     onToggleTerminal: @escaping (Bool) -> Void,
     onStopMonitoring: @escaping () -> Void,
     onConnect: @escaping () -> Void,
@@ -81,6 +85,8 @@ public struct MonitoringCardView: View {
     self.claudeClient = claudeClient
     self.showTerminal = showTerminal
     self.initialPrompt = initialPrompt
+    self.terminalKey = terminalKey
+    self.viewModel = viewModel
     self.onToggleTerminal = onToggleTerminal
     self.onStopMonitoring = onStopMonitoring
     self.onConnect = onConnect
@@ -104,10 +110,12 @@ public struct MonitoringCardView: View {
       SessionMonitorPanel(
         state: state,
         showTerminal: showTerminal,
+        terminalKey: terminalKey,
         sessionId: session.id,
         projectPath: session.projectPath,
         claudeClient: claudeClient,
         initialPrompt: initialPrompt,
+        viewModel: viewModel,
         onPromptConsumed: onPromptConsumed
       )
     }

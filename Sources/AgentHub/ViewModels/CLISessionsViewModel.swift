@@ -142,8 +142,57 @@ public final class CLISessionsViewModel {
     print("[CLISessionsVM] clearPendingPrompt called for \(sessionId.prefix(8))")
     pendingTerminalPrompts.removeValue(forKey: sessionId)
   }
+
+  // MARK: - Terminal Management
+
+  /// Gets an existing terminal or creates a new one for the given key.
+  /// Key should be session ID for real sessions, or "pending-{pendingId}" for pending sessions.
+  /// This preserves the terminal PTY across pending → real session transitions.
+  public func getOrCreateTerminal(
+    forKey key: String,
+    sessionId: String?,
+    projectPath: String,
+    claudeClient: (any ClaudeCode)?,
+    initialPrompt: String?
+  ) -> TerminalContainerView {
+    if let existing = activeTerminals[key] {
+      // Send prompt to existing terminal if provided
+      if let prompt = initialPrompt {
+        existing.sendPromptIfNeeded(prompt)
+      }
+      return existing
+    }
+
+    let terminal = TerminalContainerView()
+    terminal.configure(
+      sessionId: sessionId,
+      projectPath: projectPath,
+      claudeClient: claudeClient,
+      initialPrompt: initialPrompt
+    )
+    activeTerminals[key] = terminal
+    return terminal
+  }
+
+  /// Removes the terminal for a given key
+  public func removeTerminal(forKey key: String) {
+    activeTerminals.removeValue(forKey: key)
+  }
+
+  /// Transfers terminal from pending key to real session ID (for pending → real transition)
+  public func transferTerminal(fromPendingId pendingId: UUID, toSessionId sessionId: String) {
+    let pendingKey = "pending-\(pendingId.uuidString)"
+    if let terminal = activeTerminals.removeValue(forKey: pendingKey) {
+      activeTerminals[sessionId] = terminal
+    }
+  }
+
   /// Sessions being started in Hub's embedded terminal (no session ID yet)
   public var pendingHubSessions: [PendingHubSession] = []
+
+  /// Active terminal views keyed by worktree path
+  /// Preserves terminal PTY across pending → real session transition
+  public var activeTerminals: [String: TerminalContainerView] = [:]
 
   // MARK: - Monitoring State
 
@@ -520,6 +569,8 @@ public final class CLISessionsViewModel {
   /// Starts a new Claude session in the Hub's embedded terminal (not external terminal)
   /// - Parameter worktree: The worktree to start the session in
   public func startNewSessionInHub(_ worktree: WorktreeBranch) {
+    // Each pending session gets a unique ID, so no need to clear existing terminals
+    // Terminals are now keyed by session ID, not worktree path
     let pending = PendingHubSession(worktree: worktree)
     pendingHubSessions.append(pending)
 
@@ -604,21 +655,52 @@ public final class CLISessionsViewModel {
 
   /// Handles when a new session file is detected
   private func handleNewSessionFound(sessionId: String, pending: PendingHubSession, worktree: WorktreeBranch) {
-    // Remove the pending session
-    pendingHubSessions.removeAll { $0.id == pending.id }
-
     // Refresh to get the real session object
     Task {
       await monitorService.refreshSessions()
 
+      // Wait for the publisher to propagate to selectedRepositories
+      // The Combine subscription updates asynchronously on MainActor
+      try? await Task.sleep(for: .milliseconds(100))
+
       // Find and monitor the new session
+      var found = false
       for repo in selectedRepositories {
         if let matchingWorktree = repo.worktrees.first(where: { $0.path == worktree.path }),
            let session = matchingWorktree.sessions.first(where: { $0.id == sessionId }) {
+          // Remove pending only after finding the real session
+          pendingHubSessions.removeAll { $0.id == pending.id }
+          // Transfer terminal from pending key to real session ID
+          transferTerminal(fromPendingId: pending.id, toSessionId: session.id)
+          // Keep terminal view visible during transition
+          sessionsWithTerminalView.insert(session.id)
           startMonitoring(session: session)
+          found = true
           break
         }
       }
+
+      // Fallback: search by session ID alone if path matching failed
+      if !found {
+        for repo in selectedRepositories {
+          for wt in repo.worktrees {
+            if let session = wt.sessions.first(where: { $0.id == sessionId }) {
+              pendingHubSessions.removeAll { $0.id == pending.id }
+              // Transfer terminal from pending key to real session ID
+              transferTerminal(fromPendingId: pending.id, toSessionId: session.id)
+              // Keep terminal view visible during transition
+              sessionsWithTerminalView.insert(session.id)
+              startMonitoring(session: session)
+              found = true
+              break
+            }
+          }
+          if found { break }
+        }
+      }
+
+      // If still not found, keep pending session visible (terminal continues working)
+      // This handles edge cases where session isn't immediately discoverable
     }
   }
 
