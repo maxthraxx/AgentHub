@@ -15,24 +15,42 @@ import SwiftUI
 /// SwiftUI wrapper for SwiftTerm's LocalProcessTerminalView
 /// Provides an embedded terminal for interacting with Claude sessions
 public struct EmbeddedTerminalView: NSViewRepresentable {
+  let terminalKey: String  // Key for terminal storage (session ID or "pending-{pendingId}")
   let sessionId: String?  // Optional: nil for new sessions, set for resume
   let projectPath: String
   let claudeClient: (any ClaudeCode)?
   let initialPrompt: String?  // Optional: prompt to include with resume command
+  let viewModel: CLISessionsViewModel?  // For shared terminal storage
 
   public init(
+    terminalKey: String,
     sessionId: String? = nil,
     projectPath: String,
     claudeClient: (any ClaudeCode)?,
-    initialPrompt: String? = nil
+    initialPrompt: String? = nil,
+    viewModel: CLISessionsViewModel? = nil
   ) {
+    self.terminalKey = terminalKey
     self.sessionId = sessionId
     self.projectPath = projectPath
     self.claudeClient = claudeClient
     self.initialPrompt = initialPrompt
+    self.viewModel = viewModel
   }
 
   public func makeNSView(context: Context) -> TerminalContainerView {
+    // Use shared terminal storage if viewModel is provided
+    if let viewModel = viewModel {
+      return viewModel.getOrCreateTerminal(
+        forKey: terminalKey,
+        sessionId: sessionId,
+        projectPath: projectPath,
+        claudeClient: claudeClient,
+        initialPrompt: initialPrompt
+      )
+    }
+
+    // Fallback: create standalone terminal (for previews)
     let containerView = TerminalContainerView()
     containerView.configure(
       sessionId: sessionId,
@@ -209,6 +227,7 @@ public class TerminalContainerView: NSView {
 
 #Preview("Resume Session") {
   EmbeddedTerminalView(
+    terminalKey: "test-session-123",
     sessionId: "test-session-123",
     projectPath: "/Users/test/project",
     claudeClient: nil
@@ -218,6 +237,7 @@ public class TerminalContainerView: NSView {
 
 #Preview("New Session") {
   EmbeddedTerminalView(
+    terminalKey: "pending-preview",
     projectPath: "/Users/test/project",
     claudeClient: nil
   )
