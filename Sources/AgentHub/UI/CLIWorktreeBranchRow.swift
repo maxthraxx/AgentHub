@@ -180,10 +180,11 @@ public struct CLIWorktreeBranchRow: View {
             VStack(alignment: .leading, spacing: 0) {
               Button(action: {
                 showNewSessionMenu = false
-                onOpenTerminal()
+                onStartInHub()
               }) {
-                Label("Open in Terminal", systemImage: "terminal")
+                Label("Start in Hub", systemImage: "square.grid.2x2")
                   .frame(maxWidth: .infinity, alignment: .leading)
+                  .foregroundColor(.brandPrimary)
               }
               .buttonStyle(.plain)
               .padding(.horizontal, 12)
@@ -194,9 +195,9 @@ public struct CLIWorktreeBranchRow: View {
 
               Button(action: {
                 showNewSessionMenu = false
-                onStartInHub()
+                onOpenTerminal()
               }) {
-                Label("Start in Hub", systemImage: "square.grid.2x2")
+                Label("Open in Terminal", systemImage: "terminal")
                   .frame(maxWidth: .infinity, alignment: .leading)
               }
               .buttonStyle(.plain)
@@ -213,6 +214,7 @@ public struct CLIWorktreeBranchRow: View {
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
+      .agentHubRow(isHighlighted: false)
 
       // Sessions list (when expanded)
       if isExpanded {
@@ -256,7 +258,8 @@ public struct CLIWorktreeBranchRow: View {
             }
           }
           .frame(maxHeight: 300)
-          .padding(.vertical, 4)
+          .padding(.top, 8)
+          .padding(.bottom, 4)
           .padding(.leading, 20)
         }
       }
