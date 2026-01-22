@@ -62,6 +62,7 @@ public struct MonitoringCardView: View {
   let onConnect: () -> Void
   let onCopySessionId: () -> Void
   let onOpenSessionFile: () -> Void
+  let onRefreshTerminal: () -> Void
   let onInlineRequestSubmit: ((String, CLISession) -> Void)?
   let onPromptConsumed: (() -> Void)?
 
@@ -85,6 +86,7 @@ public struct MonitoringCardView: View {
     onConnect: @escaping () -> Void,
     onCopySessionId: @escaping () -> Void,
     onOpenSessionFile: @escaping () -> Void,
+    onRefreshTerminal: @escaping () -> Void,
     onInlineRequestSubmit: ((String, CLISession) -> Void)? = nil,
     onPromptConsumed: (() -> Void)? = nil
   ) {
@@ -102,6 +104,7 @@ public struct MonitoringCardView: View {
     self.onConnect = onConnect
     self.onCopySessionId = onCopySessionId
     self.onOpenSessionFile = onOpenSessionFile
+    self.onRefreshTerminal = onRefreshTerminal
     self.onInlineRequestSubmit = onInlineRequestSubmit
     self.onPromptConsumed = onPromptConsumed
   }
@@ -387,6 +390,22 @@ public struct MonitoringCardView: View {
       }
       .buttonStyle(.plain)
       .help("View git unstaged changes")
+
+      // Terminal refresh button (only visible when terminal is shown)
+      if showTerminal {
+        Button(action: onRefreshTerminal) {
+          HStack(spacing: 4) {
+            Image(systemName: "arrow.clockwise")
+              .font(.caption)
+            Text("Terminal")
+              .font(.system(.caption2, design: .rounded))
+          }
+          .foregroundColor(.secondary)
+          .agentHubChip()
+        }
+        .buttonStyle(.plain)
+        .help("Refresh terminal (reload session history)")
+      }
     }
     .help(session.projectPath)
   }
@@ -445,7 +464,8 @@ public struct MonitoringCardView: View {
       onStopMonitoring: {},
       onConnect: {},
       onCopySessionId: {},
-      onOpenSessionFile: {}
+      onOpenSessionFile: {},
+      onRefreshTerminal: {}
     )
 
     // Awaiting approval with slug
@@ -470,7 +490,8 @@ public struct MonitoringCardView: View {
       onStopMonitoring: {},
       onConnect: {},
       onCopySessionId: {},
-      onOpenSessionFile: {}
+      onOpenSessionFile: {},
+      onRefreshTerminal: {}
     )
 
     // Loading state (no slug - shows only session ID)
@@ -489,7 +510,8 @@ public struct MonitoringCardView: View {
       onStopMonitoring: {},
       onConnect: {},
       onCopySessionId: {},
-      onOpenSessionFile: {}
+      onOpenSessionFile: {},
+      onRefreshTerminal: {}
     )
   }
   .padding()

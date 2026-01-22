@@ -191,6 +191,13 @@ public final class CLISessionsViewModel {
     }
   }
 
+  /// Refreshes the terminal for a session by restarting it.
+  /// This reloads the session history from the JSONL file (useful when session was updated externally).
+  public func refreshTerminal(forKey key: String, sessionId: String?, projectPath: String) {
+    guard let terminal = activeTerminals[key] else { return }
+    terminal.restart(sessionId: sessionId, projectPath: projectPath, claudeClient: claudeClient)
+  }
+
   /// Sessions being started in Hub's embedded terminal (no session ID yet)
   public var pendingHubSessions: [PendingHubSession] = []
 

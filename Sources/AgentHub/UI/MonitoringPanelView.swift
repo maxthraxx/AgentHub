@@ -283,7 +283,8 @@ public struct MonitoringPanelView: View {
         },
         onConnect: { },
         onCopySessionId: { },
-        onOpenSessionFile: { }
+        onOpenSessionFile: { },
+        onRefreshTerminal: { }
       )
     }
 
@@ -323,6 +324,13 @@ public struct MonitoringPanelView: View {
         onOpenSessionFile: {
           openSessionFile(for: item.session)
         },
+        onRefreshTerminal: {
+          viewModel.refreshTerminal(
+            forKey: item.session.id,
+            sessionId: item.session.id,
+            projectPath: item.session.projectPath
+          )
+        },
         onInlineRequestSubmit: { prompt, session in
           viewModel.showTerminalWithPrompt(for: session, prompt: prompt)
         },
@@ -359,7 +367,8 @@ public struct MonitoringPanelView: View {
               },
               onConnect: { },
               onCopySessionId: { },
-              onOpenSessionFile: { }
+              onOpenSessionFile: { },
+              onRefreshTerminal: { }
             )
 
           case .monitored(let session, let state):
@@ -395,6 +404,13 @@ public struct MonitoringPanelView: View {
               },
               onOpenSessionFile: {
                 openSessionFile(for: session)
+              },
+              onRefreshTerminal: {
+                viewModel.refreshTerminal(
+                  forKey: session.id,
+                  sessionId: session.id,
+                  projectPath: session.projectPath
+                )
               },
               onInlineRequestSubmit: { prompt, sess in
                 viewModel.showTerminalWithPrompt(for: sess, prompt: prompt)

@@ -118,6 +118,21 @@ public class TerminalContainerView: NSView {
 
   // MARK: - Configuration
 
+  /// Restarts the terminal by terminating the current process and starting a new one.
+  /// Use this to reload session history after external changes.
+  func restart(
+    sessionId: String?,
+    projectPath: String,
+    claudeClient: (any ClaudeCode)?
+  ) {
+    terminateProcess()
+    terminalView?.removeFromSuperview()
+    terminalView = nil
+    isConfigured = false
+    promptSent = false
+    configure(sessionId: sessionId, projectPath: projectPath, claudeClient: claudeClient)
+  }
+
   func configure(
     sessionId: String?,
     projectPath: String,
