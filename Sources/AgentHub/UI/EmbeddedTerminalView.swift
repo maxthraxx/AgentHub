@@ -12,10 +12,10 @@ import SwiftUI
 
 // MARK: - SafeLocalProcessTerminalView
 
-/// A LocalProcessTerminalView subclass that safely handles cleanup by stopping
+/// A ManagedLocalProcessTerminalView subclass that safely handles cleanup by stopping
 /// data reception before process termination. This prevents crashes when the
 /// terminal buffer receives data during deallocation.
-class SafeLocalProcessTerminalView: LocalProcessTerminalView {
+class SafeLocalProcessTerminalView: ManagedLocalProcessTerminalView {
   private var _isStopped = false
   private let stopLock = NSLock()
 
@@ -100,10 +100,11 @@ public struct EmbeddedTerminalView: NSViewRepresentable {
 // MARK: - TerminalContainerView
 
 /// Container view that manages the terminal lifecycle
-public class TerminalContainerView: NSView {
+public class TerminalContainerView: NSView, ManagedLocalProcessTerminalViewDelegate {
   private var terminalView: SafeLocalProcessTerminalView?
   private var isConfigured = false
   private var promptSent = false  // Track if we've already sent a prompt
+  private var terminalPidMap: [ObjectIdentifier: pid_t] = [:]
 
   // MARK: - Lifecycle
 
@@ -118,6 +119,7 @@ public class TerminalContainerView: NSView {
   public func terminateProcess() {
     // Stop data reception FIRST to prevent DispatchIO race condition crash
     terminalView?.stopReceivingData()
+    terminalView?.terminateProcessTree()
   }
 
   // MARK: - Configuration
@@ -149,6 +151,7 @@ public class TerminalContainerView: NSView {
     // Create and configure terminal view
     let terminal = SafeLocalProcessTerminalView(frame: bounds)
     terminal.translatesAutoresizingMaskIntoConstraints = false
+    terminal.processDelegate = self
 
     // Configure terminal appearance
     configureTerminalAppearance(terminal)
@@ -172,6 +175,7 @@ public class TerminalContainerView: NSView {
       claudeClient: claudeClient,
       initialPrompt: initialPrompt
     )
+    registerProcessIfNeeded(for: terminal)
   }
 
   /// Sends a prompt to the terminal if not already sent
@@ -190,7 +194,7 @@ public class TerminalContainerView: NSView {
     }
   }
 
-  private func configureTerminalAppearance(_ terminal: LocalProcessTerminalView) {
+  private func configureTerminalAppearance(_ terminal: TerminalView) {
     // Use a monospace font that looks good in terminals
     let fontSize: CGFloat = 12
     let font = NSFont(name: "SF Mono", size: fontSize)
@@ -207,7 +211,7 @@ public class TerminalContainerView: NSView {
   }
 
   private func startClaudeProcess(
-    terminal: LocalProcessTerminalView,
+    terminal: ManagedLocalProcessTerminalView,
     sessionId: String?,
     projectPath: String,
     claudeClient: (any ClaudeCode)?,
@@ -271,18 +275,18 @@ public class TerminalContainerView: NSView {
       // Include initial prompt if provided (for inline edit requests)
       if let prompt = initialPrompt, !prompt.isEmpty {
         let escapedPrompt = prompt.replacingOccurrences(of: "'", with: "'\\''")
-        shellCommand = "cd '\(escapedPath)' && '\(escapedClaudePath)' -r '\(escapedSessionId)' '\(escapedPrompt)'"
+        shellCommand = "cd '\(escapedPath)' && exec '\(escapedClaudePath)' -r '\(escapedSessionId)' '\(escapedPrompt)'"
       } else {
-        shellCommand = "cd '\(escapedPath)' && '\(escapedClaudePath)' -r '\(escapedSessionId)'"
+        shellCommand = "cd '\(escapedPath)' && exec '\(escapedClaudePath)' -r '\(escapedSessionId)'"
       }
     } else {
       // Start NEW session (no -r flag)
       // Include initial prompt if provided (triggers immediate session file creation)
       if let prompt = initialPrompt, !prompt.isEmpty {
         let escapedPrompt = prompt.replacingOccurrences(of: "'", with: "'\\''")
-        shellCommand = "cd '\(escapedPath)' && '\(escapedClaudePath)' '\(escapedPrompt)'"
+        shellCommand = "cd '\(escapedPath)' && exec '\(escapedClaudePath)' '\(escapedPrompt)'"
       } else {
-        shellCommand = "cd '\(escapedPath)' && '\(escapedClaudePath)'"
+        shellCommand = "cd '\(escapedPath)' && exec '\(escapedClaudePath)'"
       }
     }
 
@@ -292,6 +296,29 @@ public class TerminalContainerView: NSView {
       args: ["-c", shellCommand],
       environment: environment.map { "\($0.key)=\($0.value)" }
     )
+  }
+
+  private func registerProcessIfNeeded(for terminal: SafeLocalProcessTerminalView) {
+    guard let pid = terminal.currentProcessId, pid > 0 else { return }
+    let key = ObjectIdentifier(terminal)
+    terminalPidMap[key] = pid
+    TerminalProcessRegistry.shared.register(pid: pid)
+  }
+
+  // MARK: - ManagedLocalProcessTerminalViewDelegate
+
+  public func sizeChanged(source: ManagedLocalProcessTerminalView, newCols: Int, newRows: Int) {}
+
+  public func setTerminalTitle(source: ManagedLocalProcessTerminalView, title: String) {}
+
+  public func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
+
+  public func processTerminated(source: TerminalView, exitCode: Int32?) {
+    let key = ObjectIdentifier(source)
+    if let pid = terminalPidMap[key] {
+      TerminalProcessRegistry.shared.unregister(pid: pid)
+      terminalPidMap.removeValue(forKey: key)
+    }
   }
 }
 
