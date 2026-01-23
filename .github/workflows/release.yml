@@ -82,10 +82,13 @@ jobs:
           echo "Zip file size: $(cat AgentHub.app.zip.size) bytes"
 
       - name: Generate Sparkle signature
-        if: ${{ secrets.SPARKLE_PRIVATE_KEY != '' }}
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
+          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
+            echo "SPARKLE_PRIVATE_KEY not set. Skipping Sparkle signature generation."
+            exit 0
+          fi
           # Find the Sparkle sign_update tool
           SIGN_UPDATE=$(find ~/Library/Developer/Xcode/DerivedData -name sign_update -type f 2>/dev/null | head -1)
           if [ -n "$SIGN_UPDATE" ]; then
