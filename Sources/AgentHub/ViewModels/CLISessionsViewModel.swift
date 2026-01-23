@@ -502,6 +502,12 @@ public final class CLISessionsViewModel {
 
   /// Removes a repository from monitoring
   public func removeRepository(_ repository: SelectedRepository) {
+    // Cancel any pending hub sessions in this repository
+    let pendingToCancel = pendingHubSessions.filter { $0.worktree.path.hasPrefix(repository.path) }
+    for pending in pendingToCancel {
+      cancelPendingSession(pending)
+    }
+
     // Stop monitoring all sessions from this repository
     for worktree in repository.worktrees {
       for session in worktree.sessions {
@@ -745,6 +751,8 @@ public final class CLISessionsViewModel {
 
   /// Removes a pending Hub session (e.g., if user cancels)
   public func cancelPendingSession(_ pending: PendingHubSession) {
+    let pendingKey = "pending-\(pending.id.uuidString)"
+    removeTerminal(forKey: pendingKey)
     pendingHubSessions.removeAll { $0.id == pending.id }
   }
 
@@ -850,6 +858,7 @@ public final class CLISessionsViewModel {
           )
 #endif
           Task { @MainActor in
+            self.removeTerminal(forKey: "pending-\(pending.id.uuidString)")
             self.pendingHubSessions.removeAll { $0.id == pending.id }
           }
           continuation.resume()
@@ -1039,6 +1048,7 @@ public final class CLISessionsViewModel {
       "[PollNewSession] pendingId=\(pending.id.uuidString, privacy: .public) timed out waiting for project dir"
     )
 #endif
+    removeTerminal(forKey: "pending-\(pending.id.uuidString)")
     pendingHubSessions.removeAll { $0.id == pending.id }
   }
 
