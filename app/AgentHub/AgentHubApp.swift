@@ -16,6 +16,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   /// Shared provider instance - created here so it's available for lifecycle events
   let provider = AgentHubProvider()
 
+  /// Update controller for Sparkle auto-updates
+  let updateController = UpdateController()
+
   func applicationDidFinishLaunching(_ notification: Notification) {
     // Note: We intentionally do NOT clean up orphaned processes here
     // because we can't distinguish between processes spawned by AgentHub
@@ -40,6 +43,11 @@ struct AgentHubApp: App {
         .agentHub(appDelegate.provider)
     }
     .windowStyle(.hiddenTitleBar)
+    .commands {
+      CommandGroup(after: .appInfo) {
+        CheckForUpdatesView(updateController: appDelegate.updateController)
+      }
+    }
 
     MenuBarExtra(
       isInserted: Binding(

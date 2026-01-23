@@ -71,6 +71,31 @@ jobs:
           # Staple the ticket
           xcrun stapler staple build/AgentHub.app
 
+      - name: Create zip for Sparkle updates
+        run: |
+          cd build
+          # Re-create zip after stapling (the notarization zip was created before stapling)
+          rm -f AgentHub.zip
+          ditto -c -k --keepParent AgentHub.app AgentHub.app.zip
+          # Get file size for appcast.xml
+          stat -f%z AgentHub.app.zip > AgentHub.app.zip.size
+          echo "Zip file size: $(cat AgentHub.app.zip.size) bytes"
+
+      - name: Generate Sparkle signature
+        if: ${{ secrets.SPARKLE_PRIVATE_KEY != '' }}
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          # Find the Sparkle sign_update tool
+          SIGN_UPDATE=$(find ~/Library/Developer/Xcode/DerivedData -name sign_update -type f 2>/dev/null | head -1)
+          if [ -n "$SIGN_UPDATE" ]; then
+            echo "$SPARKLE_PRIVATE_KEY" | "$SIGN_UPDATE" build/AgentHub.app.zip --ed-key-file - > build/sparkle-signature.txt
+            cat build/sparkle-signature.txt
+          else
+            echo "Warning: sign_update tool not found. Skipping Sparkle signature generation."
+            echo "You can generate the signature manually after download."
+          fi
+
       - name: Create DMG
         run: |
           create-dmg \
@@ -84,11 +109,29 @@ jobs:
             build/AgentHub.dmg \
             build/AgentHub.app
 
-      - name: Generate checksum
+      - name: Notarize DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
+        run: |
+          # Submit DMG for notarization
+          xcrun notarytool submit build/AgentHub.dmg \
+            --apple-id "$APPLE_ID" \
+            --team-id "$TEAM_ID" \
+            --password "$APP_PASSWORD" \
+            --wait
+
+          # Staple the ticket to the DMG
+          xcrun stapler staple build/AgentHub.dmg
+
+      - name: Generate checksums
         run: |
           cd build
           shasum -a 256 AgentHub.dmg > AgentHub.dmg.sha256
+          shasum -a 256 AgentHub.app.zip > AgentHub.app.zip.sha256
           cat AgentHub.dmg.sha256
+          cat AgentHub.app.zip.sha256
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -96,6 +139,8 @@ jobs:
           files: |
             build/AgentHub.dmg
             build/AgentHub.dmg.sha256
+            build/AgentHub.app.zip
+            build/AgentHub.app.zip.sha256
           draft: false
           prerelease: false
           generate_release_notes: true
