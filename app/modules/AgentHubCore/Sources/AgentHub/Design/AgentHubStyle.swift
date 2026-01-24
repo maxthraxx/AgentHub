@@ -18,24 +18,17 @@ private struct AgentHubPanelModifier: ViewModifier {
   @Environment(\.colorScheme) private var colorScheme
 
   func body(content: Content) -> some View {
-    content
+    // Simple black/white background based on color scheme
+    let backgroundColor = colorScheme == .dark ? Color.black : Color.white
+
+    return content
       .background(
         RoundedRectangle(cornerRadius: AgentHubLayout.panelCornerRadius, style: .continuous)
-          .fill(
-            LinearGradient(
-              colors: [
-                Color.surfacePanel,
-                Color.surfacePanel.opacity(colorScheme == .dark ? 0.92 : 0.98),
-                Color.brandTertiary.opacity(colorScheme == .dark ? 0.06 : 0.1)
-              ],
-              startPoint: .topLeading,
-              endPoint: .bottomTrailing
-            )
-          )
+          .fill(backgroundColor)
       )
       .overlay(
         RoundedRectangle(cornerRadius: AgentHubLayout.panelCornerRadius, style: .continuous)
-          .stroke(Color.surfaceStroke.opacity(colorScheme == .dark ? 0.45 : 0.7), lineWidth: 1)
+          .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
       )
   }
 }
@@ -45,21 +38,22 @@ private struct AgentHubCardModifier: ViewModifier {
   let isHighlighted: Bool
 
   func body(content: Content) -> some View {
+    // Simple black/white background
+    let backgroundColor = colorScheme == .dark ? Color(white: 0.08) : Color(white: 0.98)
     let strokeColor = isHighlighted
-      ? Color.brandPrimary.opacity(colorScheme == .dark ? 0.8 : 0.6)
-      : Color.surfaceStroke.opacity(colorScheme == .dark ? 0.4 : 0.6)
+      ? Color.brandPrimary.opacity(0.6)
+      : Color.secondary.opacity(0.2)
     let strokeWidth: CGFloat = isHighlighted ? 2 : 1
 
     return content
       .background(
         RoundedRectangle(cornerRadius: AgentHubLayout.cardCornerRadius, style: .continuous)
-          .fill(Color.surfaceCard)
+          .fill(backgroundColor)
       )
       .overlay(
         RoundedRectangle(cornerRadius: AgentHubLayout.cardCornerRadius, style: .continuous)
           .stroke(strokeColor, lineWidth: strokeWidth)
       )
-      .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.08), radius: 6, x: 0, y: 2)
   }
 }
 
@@ -68,23 +62,16 @@ private struct AgentHubRowModifier: ViewModifier {
   let isHighlighted: Bool
 
   func body(content: Content) -> some View {
-    // Subtle warm gray for highlight (soft dark in dark mode, warm gray in light)
-    let highlightColor = Color(red: 0.55, green: 0.52, blue: 0.50)
-    let highlight = isHighlighted
-      ? (colorScheme == .dark ? Color.black.opacity(0.25) : highlightColor.opacity(0.08))
-      : Color.clear
+    // Simple black/white background
+    let backgroundColor = colorScheme == .dark ? Color(white: 0.1) : Color(white: 0.96)
     let strokeColor = isHighlighted
-      ? highlightColor.opacity(colorScheme == .dark ? 0.35 : 0.25)
-      : Color.surfaceStroke.opacity(colorScheme == .dark ? 0.35 : 0.55)
+      ? Color.brandPrimary.opacity(0.5)
+      : Color.secondary.opacity(0.2)
 
     return content
       .background(
         RoundedRectangle(cornerRadius: AgentHubLayout.rowCornerRadius, style: .continuous)
-          .fill(Color.surfacePanel.opacity(colorScheme == .dark ? 0.85 : 0.96))
-          .overlay(
-            RoundedRectangle(cornerRadius: AgentHubLayout.rowCornerRadius, style: .continuous)
-              .fill(highlight)
-          )
+          .fill(backgroundColor)
       )
       .overlay(
         RoundedRectangle(cornerRadius: AgentHubLayout.rowCornerRadius, style: .continuous)
@@ -97,14 +84,17 @@ private struct AgentHubInsetModifier: ViewModifier {
   @Environment(\.colorScheme) private var colorScheme
 
   func body(content: Content) -> some View {
-    content
+    // Simple black/white background
+    let backgroundColor = colorScheme == .dark ? Color(white: 0.08) : Color(white: 0.94)
+
+    return content
       .background(
         RoundedRectangle(cornerRadius: AgentHubLayout.rowCornerRadius, style: .continuous)
-          .fill(Color.surfacePanel.opacity(colorScheme == .dark ? 0.8 : 0.9))
+          .fill(backgroundColor)
       )
       .overlay(
         RoundedRectangle(cornerRadius: AgentHubLayout.rowCornerRadius, style: .continuous)
-          .stroke(Color.surfaceStroke.opacity(colorScheme == .dark ? 0.3 : 0.5), lineWidth: 1)
+          .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
       )
   }
 }
@@ -114,12 +104,13 @@ private struct AgentHubChipModifier: ViewModifier {
   let isActive: Bool
 
   func body(content: Content) -> some View {
+    // Simple black/white background
     let fillColor = isActive
-      ? Color.brandPrimary.opacity(colorScheme == .dark ? 0.2 : 0.12)
-      : Color.surfacePanel.opacity(colorScheme == .dark ? 0.75 : 0.9)
+      ? Color.brandPrimary.opacity(0.15)
+      : (colorScheme == .dark ? Color(white: 0.15) : Color(white: 0.92))
     let strokeColor = isActive
-      ? Color.brandPrimary.opacity(colorScheme == .dark ? 0.5 : 0.35)
-      : Color.surfaceStroke.opacity(colorScheme == .dark ? 0.35 : 0.55)
+      ? Color.brandPrimary.opacity(0.4)
+      : Color.secondary.opacity(0.25)
 
     return content
       .padding(.horizontal, 8)
@@ -132,6 +123,27 @@ private struct AgentHubChipModifier: ViewModifier {
         RoundedRectangle(cornerRadius: AgentHubLayout.chipCornerRadius, style: .continuous)
           .stroke(strokeColor, lineWidth: 1)
       )
+  }
+}
+
+private struct AgentHubFlatRowModifier: ViewModifier {
+  @Environment(\.colorScheme) private var colorScheme
+  let isHighlighted: Bool
+
+  func body(content: Content) -> some View {
+    // Always show subtle background, selection indicated only by left border
+    let backgroundColor = colorScheme == .dark ? Color(white: 0.07) : Color(white: 0.92)
+
+    return content
+      .background(backgroundColor)
+      .overlay(alignment: .leading) {
+        // Left accent bar for highlighted state only
+        if isHighlighted {
+          Rectangle()
+            .fill(Color.brandPrimary)
+            .frame(width: 2)
+        }
+      }
   }
 }
 
@@ -154,5 +166,9 @@ public extension View {
 
   func agentHubChip(isActive: Bool = false) -> some View {
     modifier(AgentHubChipModifier(isActive: isActive))
+  }
+
+  func agentHubFlatRow(isHighlighted: Bool = false) -> some View {
+    modifier(AgentHubFlatRowModifier(isHighlighted: isHighlighted))
   }
 }
