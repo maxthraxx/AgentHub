@@ -68,13 +68,18 @@ public struct CLIRepositoryTreeView: View {
   }
 
   public var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
+    VStack(alignment: .leading, spacing: 0) {
       // Repository header
       repositoryHeader
 
       // Worktrees list (when expanded)
       if repository.isExpanded {
-        ForEach(repository.worktrees) { worktree in
+        ForEach(Array(repository.worktrees.enumerated()), id: \.element.id) { index, worktree in
+          // Divider before each worktree row
+          Divider()
+
+
+
           CLIWorktreeBranchRow(
             worktree: worktree,
             isExpanded: worktree.isExpanded,
@@ -94,12 +99,9 @@ public struct CLIRepositoryTreeView: View {
             isDebugMode: isDebugMode,
             isDeleting: worktree.path == deletingWorktreePath
           )
-          .padding(.leading, 12)
         }
       }
     }
-    .padding(6)
-    .agentHubCard(isHighlighted: false)
     .alert("Delete Worktree?", isPresented: $showDeleteConfirmation) {
       Button("Cancel", role: .cancel) {
         worktreeToDelete = nil
@@ -132,20 +134,13 @@ public struct CLIRepositoryTreeView: View {
           // Folder icon
           Image(systemName: "folder.fill")
             .font(.subheadline)
-            .foregroundColor(.brandPrimary)
+            .foregroundColor(.secondary)
 
-          // Repository name (no path - worktree rows show paths)
+          // Repository name
           Text(repository.name)
             .font(.headline)
             .fontWeight(.semibold)
             .foregroundColor(.primary)
-
-          // Green dot for active sessions (only when collapsed)
-          if repository.activeSessionCount > 0 && !repository.isExpanded {
-            Circle()
-              .fill(Color.green)
-              .frame(width: 8, height: 8)
-          }
         }
         .contentShape(Rectangle())
       }
@@ -153,20 +148,29 @@ public struct CLIRepositoryTreeView: View {
 
       Spacer()
 
-      // Session count badge
+      // Session count
       if repository.totalSessionCount > 0 {
         Text("\(repository.totalSessionCount)")
           .font(.caption)
           .foregroundColor(.secondary)
-          .agentHubChip(isActive: false)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 4)
+          .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+              .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+          )
       }
 
       // Create worktree button
       Button(action: onCreateWorktree) {
         Image(systemName: "arrow.triangle.branch")
           .font(.caption)
-          .foregroundColor(.brandPrimary)
-          .agentHubChip()
+          .foregroundColor(.brandSecondary)
+          .padding(6)
+          .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+              .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+          )
       }
       .buttonStyle(.plain)
       .help("Create worktree")
@@ -176,14 +180,17 @@ public struct CLIRepositoryTreeView: View {
         Image(systemName: "xmark.circle.fill")
           .font(.caption)
           .foregroundColor(.secondary)
-          .agentHubChip()
+          .padding(6)
+          .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+              .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+          )
       }
       .buttonStyle(.plain)
       .help("Remove repository")
     }
     .padding(.horizontal, 10)
     .padding(.vertical, 8)
-    .agentHubRow(isHighlighted: false)
   }
 }
 

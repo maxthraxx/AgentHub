@@ -95,7 +95,7 @@ public struct CLIWorktreeBranchRow: View {
 
   public var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      // Worktree header - shows path [branch] like git worktree list
+      // Worktree header - flat single line: > Y path  branch  count ●  🗑  +
       Button(action: onToggleExpanded) {
         HStack(spacing: 8) {
           // Expand/collapse indicator
@@ -109,47 +109,19 @@ public struct CLIWorktreeBranchRow: View {
             .font(.subheadline)
             .foregroundColor(worktree.isWorktree ? .brandSecondary : .brandPrimary)
 
-          // Path + [branch] - like git worktree list
-          ViewThatFits(in: .horizontal) {
-            HStack(spacing: 4) {
-              Text(worktree.path)
-                .font(.system(.subheadline, design: .monospaced))
-                .foregroundColor(worktree.isWorktree ? .brandSecondary : .brandPrimary)
-                .lineLimit(1)
-              Text("[\(worktree.name)]")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-              Text(worktree.path)
-                .font(.system(.subheadline, design: .monospaced))
-                .foregroundColor(worktree.isWorktree ? .brandSecondary : .brandPrimary)
-                .lineLimit(1)
-              Text("[\(worktree.name)]")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-            }
-          }
+          // Path
+          Text(worktree.path)
+            .font(.system(.subheadline, design: .monospaced))
+            .foregroundColor(.secondary)
+            .lineLimit(1)
+
+          // Branch name
+          Text(worktree.name)
+            .font(.system(.caption, design: .monospaced))
+            .foregroundColor(.primary)
+            .lineLimit(1)
 
           Spacer()
-
-          // Delete worktree button (only for actual worktrees in debug mode)
-          if isDebugMode && worktree.isWorktree {
-            if isDeleting {
-              ProgressView()
-                .scaleEffect(0.6)
-                .frame(width: 16, height: 16)
-            } else {
-              Button(action: { onDeleteWorktree?() }) {
-                Image(systemName: "trash")
-                  .font(.caption)
-                  .foregroundColor(.red.opacity(0.8))
-                  .agentHubChip()
-              }
-              .buttonStyle(.plain)
-              .help("Delete worktree")
-            }
-          }
 
           // Session count with active indicator
           if !worktree.sessions.isEmpty {
@@ -164,7 +136,30 @@ public struct CLIWorktreeBranchRow: View {
                   .frame(width: 6, height: 6)
               }
             }
-            .agentHubChip(isActive: false)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+              RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+            )
+          }
+
+          // Delete worktree button (only for actual worktrees)
+          if worktree.isWorktree {
+            if isDeleting {
+              ProgressView()
+                .scaleEffect(0.6)
+                .frame(width: 16, height: 16)
+            } else {
+              Button(action: { onDeleteWorktree?() }) {
+                Image(systemName: "trash")
+                  .font(.caption)
+                  .foregroundColor(.brandSecondary.opacity(0.8))
+                  .padding(.horizontal, 2)
+              }
+              .buttonStyle(.plain)
+              .help("Delete worktree")
+            }
           }
 
           // New session button with menu
@@ -172,7 +167,7 @@ public struct CLIWorktreeBranchRow: View {
             Image(systemName: "plus")
               .font(.caption)
               .foregroundColor(.brandSecondary)
-              .agentHubChip()
+              .padding(.horizontal, 2)
           }
           .buttonStyle(.plain)
           .help("Start new Claude session")
@@ -209,12 +204,11 @@ public struct CLIWorktreeBranchRow: View {
             .frame(width: 180)
           }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 14)
         .padding(.horizontal, 4)
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
-      .agentHubRow(isHighlighted: false)
 
       // Sessions list (when expanded)
       if isExpanded {
@@ -226,7 +220,7 @@ public struct CLIWorktreeBranchRow: View {
             .padding(.vertical, 4)
         } else {
           ScrollView {
-            VStack(spacing: 8) {
+            VStack(spacing: 4) {
               ForEach(visibleSessions) { session in
                 CLISessionRow(
                   session: session,
@@ -258,9 +252,8 @@ public struct CLIWorktreeBranchRow: View {
             }
           }
           .frame(maxHeight: 300)
-          .padding(.top, 8)
+          .padding(.top, 4)
           .padding(.bottom, 4)
-          .padding(.leading, 20)
         }
       }
     }

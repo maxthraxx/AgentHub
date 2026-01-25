@@ -452,7 +452,7 @@ public struct CLISessionsListView: View {
   // MARK: - Repositories List
 
   private var repositoriesList: some View {
-    ScrollView {
+    ScrollView(showsIndicators: false) {
       LazyVStack(spacing: 12) {
         // Status header
         statusHeader

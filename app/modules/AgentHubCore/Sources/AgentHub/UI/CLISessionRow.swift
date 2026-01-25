@@ -42,43 +42,34 @@ public struct CLISessionRow: View {
 
   public var body: some View {
     sessionRowContent
-      .padding(.vertical, 8)
+      .padding(.vertical, 10)
       .padding(.horizontal, 10)
       .contentShape(Rectangle())
       .onTapGesture {
         onToggleMonitoring()
       }
-      .agentHubRow(isHighlighted: isMonitoring)
+      .agentHubFlatRow(isHighlighted: isMonitoring)
       .help(isMonitoring ? "Stop monitoring" : "Monitor session")
   }
 
   // MARK: - Session Row Content
 
   private var sessionRowContent: some View {
-    HStack(spacing: 12) {
-      // Activity indicator
-      Circle()
-        .fill(statusColor)
-        .frame(width: 8, height: 8)
+    VStack(alignment: .leading, spacing: 4) {
+      // Session ID with dot (prominently displayed)
+      sessionIdRow
 
-      VStack(alignment: .leading, spacing: 4) {
-        // Session ID (prominently displayed)
-        sessionIdRow
-
-        // Message preview (first or last based on toggle)
-        if let message = showLastMessage ? session.lastMessage : session.firstMessage,
-           !message.isEmpty {
-          Text(message.prefix(80) + (message.count > 80 ? "..." : ""))
-            .font(.caption)
-            .foregroundColor(.primary.opacity(0.8))
-            .lineLimit(1)
-        }
-
-        // Metadata row
-        metadataRow
+      // Message preview (first or last based on toggle)
+      if let message = showLastMessage ? session.lastMessage : session.firstMessage,
+         !message.isEmpty {
+        Text(message.prefix(80) + (message.count > 80 ? "..." : ""))
+          .font(.caption)
+          .foregroundColor(.primary.opacity(0.8))
+          .lineLimit(1)
       }
 
-      Spacer()
+      // Metadata row
+      metadataRow
     }
   }
 
@@ -86,18 +77,26 @@ public struct CLISessionRow: View {
     if session.isActive {
       return .green
     }
-    return isMonitoring ? .brandPrimary : .gray.opacity(0.5)
+    if isMonitoring {
+      return .brandPrimary
+    }
+    return .gray.opacity(0.5)
   }
 
   // MARK: - Session ID Row
 
   private var sessionIdRow: some View {
     HStack(spacing: 6) {
+      // Activity indicator dot
+      Circle()
+        .fill(statusColor)
+        .frame(width: 8, height: 8)
+
       if let slug = session.slug {
         // Show slug and short ID (no "Session:" label)
         Text(slug)
           .font(.system(.subheadline, design: .monospaced, weight: .semibold))
-          .foregroundColor(.brandPrimary)
+          .foregroundColor(.primary)
           .lineLimit(1)
 
         Text("•")
@@ -106,13 +105,13 @@ public struct CLISessionRow: View {
 
         Text(session.shortId)
           .font(.system(.subheadline, design: .monospaced))
-          .foregroundColor(.brandPrimary)
+          .foregroundColor(.primary)
           .fontWeight(.semibold)
       } else {
         // No slug - show "Session:" label with ID
         Text("Session: \(session.shortId)")
           .font(.system(.subheadline, design: .monospaced))
-          .foregroundColor(.brandPrimary)
+          .foregroundColor(.primary)
           .fontWeight(.semibold)
       }
 
@@ -176,7 +175,7 @@ public struct CLISessionRow: View {
             .font(.caption)
             .lineLimit(1)
         }
-        .foregroundColor(session.isWorktree ? .brandSecondary : .secondary)
+        .foregroundColor(.secondary)
 
         Text("\u{2022}")
           .font(.caption)
