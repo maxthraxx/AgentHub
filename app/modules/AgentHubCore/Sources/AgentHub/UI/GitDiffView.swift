@@ -492,6 +492,7 @@ private struct GitDiffContentView: View {
                 // Use callback if provided (redirects to built-in terminal)
                 if let callback = onInlineRequestSubmit {
                   callback(prompt, session)
+                  inlineEditorState.dismiss()  // Dismiss inline editor first
                   onDismissView()
                 } else {
                   // Fallback to external Terminal
