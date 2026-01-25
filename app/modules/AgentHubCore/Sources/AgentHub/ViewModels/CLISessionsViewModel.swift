@@ -163,6 +163,7 @@ public final class CLISessionsViewModel {
       // Send prompt to existing terminal if provided
       if let prompt = initialPrompt {
         existing.sendPromptIfNeeded(prompt)
+        clearPendingPrompt(for: key)  // Clear after sending
       }
       return existing
     }

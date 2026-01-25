@@ -244,42 +244,46 @@ public struct MonitoringCardView: View {
 
       Spacer()
 
-      // Terminal/List segmented control
-      HStack(spacing: 4) {
-        Button(action: { withAnimation(.easeInOut(duration: 0.2)) { onToggleTerminal(false) } }) {
-          Image(systemName: "list.bullet")
+      // Terminal/List segmented control (hidden when maximized)
+      if !isMaximized {
+        HStack(spacing: 4) {
+          Button(action: { withAnimation(.easeInOut(duration: 0.2)) { onToggleTerminal(false) } }) {
+            Image(systemName: "list.bullet")
+              .font(.caption)
+              .frame(width: 28, height: 22)
+              .foregroundColor(!showTerminal ? .brandPrimary : .secondary)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+
+          Button(action: { withAnimation(.easeInOut(duration: 0.2)) { onToggleTerminal(true) } }) {
+            Image(systemName: "terminal")
+              .font(.caption)
+              .frame(width: 28, height: 22)
+              .foregroundColor(showTerminal ? .brandPrimary : .secondary)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+        }
+        .padding(4)
+        .background(Color.secondary.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .animation(.easeInOut(duration: 0.2), value: showTerminal)
+      }
+
+      // Maximize/Minimize button (only in terminal mode)
+      if showTerminal {
+        Button(action: onToggleMaximize) {
+          Image(systemName: isMaximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
             .font(.caption)
-            .frame(width: 28, height: 22)
-            .foregroundColor(!showTerminal ? .brandPrimary : .secondary)
-            .contentShape(Rectangle())
+            .foregroundColor(.secondary)
+            .frame(width: 24, height: 24)
+            .background(Color.secondary.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
         }
         .buttonStyle(.plain)
-
-        Button(action: { withAnimation(.easeInOut(duration: 0.2)) { onToggleTerminal(true) } }) {
-          Image(systemName: "terminal")
-            .font(.caption)
-            .frame(width: 28, height: 22)
-            .foregroundColor(showTerminal ? .brandPrimary : .secondary)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        .help(isMaximized ? "Minimize" : "Maximize")
       }
-      .padding(4)
-      .background(Color.secondary.opacity(0.12))
-      .clipShape(RoundedRectangle(cornerRadius: 6))
-      .animation(.easeInOut(duration: 0.2), value: showTerminal)
-
-      // Maximize/Minimize button
-      Button(action: onToggleMaximize) {
-        Image(systemName: isMaximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-          .font(.caption)
-          .foregroundColor(.secondary)
-          .frame(width: 24, height: 24)
-          .background(Color.secondary.opacity(0.1))
-          .clipShape(RoundedRectangle(cornerRadius: 4))
-      }
-      .buttonStyle(.plain)
-      .help(isMaximized ? "Minimize" : "Maximize")
 
       // Close button (inline)
       Button(action: onStopMonitoring) {

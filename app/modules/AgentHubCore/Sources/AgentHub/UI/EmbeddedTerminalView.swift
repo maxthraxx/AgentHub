@@ -90,9 +90,10 @@ public struct EmbeddedTerminalView: NSViewRepresentable {
   }
 
   public func updateNSView(_ nsView: TerminalContainerView, context: Context) {
-    // If there's a pending prompt, send it to the existing terminal
-    if let prompt = initialPrompt {
+    // If there's a pending prompt, send it to the existing terminal and clear it
+    if let prompt = initialPrompt, let sessionId = sessionId {
       nsView.sendPromptIfNeeded(prompt)
+      viewModel?.clearPendingPrompt(for: sessionId)
     }
   }
 }
@@ -103,7 +104,6 @@ public struct EmbeddedTerminalView: NSViewRepresentable {
 public class TerminalContainerView: NSView, ManagedLocalProcessTerminalViewDelegate {
   private var terminalView: SafeLocalProcessTerminalView?
   private var isConfigured = false
-  private var promptSent = false  // Track if we've already sent a prompt
   private var terminalPidMap: [ObjectIdentifier: pid_t] = [:]
 
   // MARK: - Lifecycle
@@ -135,7 +135,6 @@ public class TerminalContainerView: NSView, ManagedLocalProcessTerminalViewDeleg
     terminalView?.removeFromSuperview()
     terminalView = nil
     isConfigured = false
-    promptSent = false
     configure(sessionId: sessionId, projectPath: projectPath, claudeClient: claudeClient)
   }
 
@@ -178,10 +177,9 @@ public class TerminalContainerView: NSView, ManagedLocalProcessTerminalViewDeleg
     registerProcessIfNeeded(for: terminal)
   }
 
-  /// Sends a prompt to the terminal if not already sent
+  /// Sends a prompt to the terminal
   func sendPromptIfNeeded(_ prompt: String) {
-    guard !promptSent, let terminal = terminalView else { return }
-    promptSent = true
+    guard let terminal = terminalView else { return }
 
     // Send the prompt text first
     terminal.send(txt: prompt)

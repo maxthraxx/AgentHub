@@ -165,20 +165,29 @@ struct InlineEditorView: View {
     text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
+  /// Submits the trimmed message text via the `onSubmit` callback.
+  ///
+  /// Clears the text field immediately after capturing the message. This ensures
+  /// the input is reset before the callback triggers view updates (e.g., dismissing
+  /// the inline editor), preventing stale text from appearing if the editor is reused.
   private func submitMessage() {
     guard !isTextEmpty else { return }
     let messageText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    text = ""
     onSubmit(messageText)
   }
 
+  /// Handles keyboard shortcuts for the inline editor.
+  ///
+  /// - **Enter**: Submits the message (calls `submitMessage()`)
+  /// - **Shift+Enter**: Inserts a new line (returns `.ignored` to allow default behavior)
+  /// - **Escape**: Dismisses the editor without submitting
   private func handleKeyPress(_ key: KeyPress) -> KeyPress.Result {
     switch key.key {
     case .return:
-      // Shift+Enter for new line
       if key.modifiers.contains(.shift) {
         return .ignored
       }
-      // Enter to send
       submitMessage()
       return .handled
 
