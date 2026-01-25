@@ -285,15 +285,17 @@ public struct MonitoringCardView: View {
         .help(isMaximized ? "Minimize" : "Maximize")
       }
 
-      // Close button (inline)
-      Button(action: onStopMonitoring) {
-        Image(systemName: "xmark")
-          .font(.caption)
-          .foregroundColor(.secondary)
-          .frame(width: 24, height: 24)
+      // Close button (inline, hidden when maximized)
+      if !isMaximized {
+        Button(action: onStopMonitoring) {
+          Image(systemName: "xmark")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .frame(width: 24, height: 24)
+        }
+        .buttonStyle(.plain)
+        .help("Stop monitoring")
       }
-      .buttonStyle(.plain)
-      .help("Stop monitoring")
     }
   }
 
