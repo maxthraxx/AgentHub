@@ -238,6 +238,10 @@ public final class CLISessionsViewModel {
   /// Combine cancellables for monitoring subscriptions (keyed by session ID)
   private var monitoringCancellables: [String: AnyCancellable] = [:]
 
+  /// Backup store for monitored session objects.
+  /// Ensures sessions persist across refreshes even if not yet in history.jsonl.
+  private var monitoredSessionBackup: [String: CLISession] = [:]
+
   /// Whether to show the last message instead of the first message in session rows
   public var showLastMessage: Bool {
     didSet {
@@ -371,6 +375,9 @@ public final class CLISessionsViewModel {
           // Persist after state is updated to ensure consistency
           self.persistSelectedRepositories()
 
+          // Sync backup with latest session data for monitored sessions
+          self.syncMonitoredSessionBackup()
+
           // Check for pending auto-observe
           self.processPendingAutoObserve()
         }
@@ -456,6 +463,23 @@ public final class CLISessionsViewModel {
     let sessionIds = Array(sessionsWithTerminalView)
     if let data = try? JSONEncoder().encode(sessionIds) {
       UserDefaults.standard.set(data, forKey: AgentHubDefaults.sessionsWithTerminalView)
+    }
+  }
+
+  /// Syncs the backup store with latest session data from allSessions.
+  /// Called after repositories are updated to keep backup fresh for monitored sessions.
+  /// Also cleans up any orphaned entries not in monitoredSessionIds.
+  private func syncMonitoredSessionBackup() {
+    // Update backup with latest data for monitored sessions
+    for sessionId in monitoredSessionIds {
+      if let session = allSessions.first(where: { $0.id == sessionId }) {
+        monitoredSessionBackup[sessionId] = session
+      }
+    }
+    // Remove orphaned entries (sessions no longer being monitored)
+    let orphanedIds = monitoredSessionBackup.keys.filter { !monitoredSessionIds.contains($0) }
+    for sessionId in orphanedIds {
+      monitoredSessionBackup.removeValue(forKey: sessionId)
     }
   }
 
@@ -1190,6 +1214,7 @@ public final class CLISessionsViewModel {
     guard !monitoredSessionIds.contains(session.id) else { return }
 
     monitoredSessionIds.insert(session.id)
+    monitoredSessionBackup[session.id] = session
     persistMonitoredSessions()
 
     // Subscribe to state updates
@@ -1219,6 +1244,7 @@ public final class CLISessionsViewModel {
   /// Stop monitoring by session ID
   public func stopMonitoring(sessionId: String) {
     monitoredSessionIds.remove(sessionId)
+    monitoredSessionBackup.removeValue(forKey: sessionId)
     sessionsWithTerminalView.remove(sessionId)
     monitorStates.removeValue(forKey: sessionId)
     monitoringCancellables.removeValue(forKey: sessionId)
@@ -1239,13 +1265,21 @@ public final class CLISessionsViewModel {
     monitoredSessionIds.contains(sessionId)
   }
 
-  /// Get all currently monitored sessions with their states
+  /// Get all currently monitored sessions with their states.
+  /// Uses a backup store to preserve sessions that may not yet be in history.jsonl.
   public var monitoredSessions: [(session: CLISession, state: SessionMonitorState?)] {
-    allSessions
-      .filter { monitoredSessionIds.contains($0.id) }
-      .map { session in
-        (session: session, state: monitorStates[session.id])
+    monitoredSessionIds.compactMap { sessionId in
+      // First try to get from allSessions (authoritative source if available)
+      if let session = allSessions.first(where: { $0.id == sessionId }) {
+        return (session: session, state: monitorStates[sessionId])
       }
+      // Fallback to backup if not in allSessions (race condition during refresh)
+      if let backupSession = monitoredSessionBackup[sessionId] {
+        return (session: backupSession, state: monitorStates[sessionId])
+      }
+      // Session not found anywhere - should not happen, but handle gracefully
+      return nil
+    }
   }
 
   // MARK: - Search
