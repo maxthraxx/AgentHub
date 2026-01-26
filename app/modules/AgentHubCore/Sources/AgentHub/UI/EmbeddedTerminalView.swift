@@ -113,6 +113,7 @@ public struct EmbeddedTerminalView: NSViewRepresentable {
 public class TerminalContainerView: NSView, ManagedLocalProcessTerminalViewDelegate {
   private var terminalView: SafeLocalProcessTerminalView?
   private var isConfigured = false
+  private var hasDeliveredInitialPrompt = false
   private var terminalPidMap: [ObjectIdentifier: pid_t] = [:]
 
   // MARK: - Lifecycle
@@ -144,6 +145,7 @@ public class TerminalContainerView: NSView, ManagedLocalProcessTerminalViewDeleg
     terminalView?.removeFromSuperview()
     terminalView = nil
     isConfigured = false
+    hasDeliveredInitialPrompt = false  // Reset for fresh start
     configure(sessionId: sessionId, projectPath: projectPath, claudeClient: claudeClient)
   }
 
@@ -187,9 +189,11 @@ public class TerminalContainerView: NSView, ManagedLocalProcessTerminalViewDeleg
     registerProcessIfNeeded(for: terminal)
   }
 
-  /// Sends a prompt to the terminal
+  /// Sends a prompt to the terminal (only once per terminal instance)
   func sendPromptIfNeeded(_ prompt: String) {
     guard let terminal = terminalView else { return }
+    guard !hasDeliveredInitialPrompt else { return }
+    hasDeliveredInitialPrompt = true
 
     // Send the prompt text first
     terminal.send(txt: prompt)
