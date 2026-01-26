@@ -74,6 +74,7 @@ public struct MonitoringCardView: View {
   @State private var planSheetItem: PlanSheetItem?
   @State private var pendingChangesSheetItem: PendingChangesSheetItem?
   @State private var isDragging = false
+  @State private var showingFilePicker = false
   @Environment(\.colorScheme) private var colorScheme
 
   public init(
@@ -302,6 +303,24 @@ public struct MonitoringCardView: View {
           }
         }
       }
+    }
+  }
+
+  // MARK: - File Picker
+
+  /// Handles files selected from the file picker by typing their paths into terminal
+  private func handlePickedFiles(_ result: Result<[URL], Error>) {
+    guard showTerminal, let key = terminalKey, let viewModel = viewModel else { return }
+
+    switch result {
+    case .success(let urls):
+      for url in urls {
+        let path = url.path
+        let quotedPath = path.contains(" ") ? "\"\(path)\"" : path
+        viewModel.typeToTerminal(forKey: key, text: quotedPath + " ")
+      }
+    case .failure(let error):
+      print("File picker error: \(error.localizedDescription)")
     }
   }
 
@@ -534,15 +553,37 @@ public struct MonitoringCardView: View {
   @ViewBuilder
   private var monitorContent: some View {
     if showTerminal {
-      EmbeddedTerminalView(
-        terminalKey: terminalKey ?? session.id,
-        sessionId: session.id,
-        projectPath: session.projectPath,
-        claudeClient: claudeClient,
-        initialPrompt: initialPrompt,
-        viewModel: viewModel
-      )
-      .frame(minHeight: 300)
+      ZStack(alignment: .bottomTrailing) {
+        EmbeddedTerminalView(
+          terminalKey: terminalKey ?? session.id,
+          sessionId: session.id,
+          projectPath: session.projectPath,
+          claudeClient: claudeClient,
+          initialPrompt: initialPrompt,
+          viewModel: viewModel
+        )
+        .frame(minHeight: 300)
+
+        // Plus button for file picker - only in terminal mode
+        Button {
+          showingFilePicker = true
+        } label: {
+          Image(systemName: "plus.circle.fill")
+            .font(.system(size: 28))
+            .foregroundColor(.primary)
+            .shadow(color: .primary.opacity(0.6), radius: 8)
+        }
+        .buttonStyle(.plain)
+        .padding(12)
+        .help("Add files from file system")
+      }
+      .fileImporter(
+        isPresented: $showingFilePicker,
+        allowedContentTypes: [.image, .pdf, .plainText, .data],
+        allowsMultipleSelection: true
+      ) { result in
+        handlePickedFiles(result)
+      }
     } else {
       VStack(alignment: .leading, spacing: 12) {
         Text("Recent Activity")
