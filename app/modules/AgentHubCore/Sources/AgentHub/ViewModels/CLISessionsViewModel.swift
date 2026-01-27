@@ -48,6 +48,15 @@ public final class CLISessionsViewModel {
     public let id = UUID()
     public let worktree: WorktreeBranch
     public let message: String
+    public let isOrphaned: Bool
+    public let parentRepoPath: String?
+
+    public init(worktree: WorktreeBranch, message: String, isOrphaned: Bool = false, parentRepoPath: String? = nil) {
+      self.worktree = worktree
+      self.message = message
+      self.isOrphaned = isOrphaned
+      self.parentRepoPath = parentRepoPath
+    }
   }
 
   // MARK: - Search State
@@ -660,16 +669,48 @@ public final class CLISessionsViewModel {
     do {
       try await worktreeService.removeWorktree(at: worktree.path)
       // [CLISessionsVM] Worktree deleted successfully")
+      deletingWorktreePath = nil
       refresh()
     } catch {
       // [CLISessionsVM] Failed to delete worktree: \(error.localizedDescription)")
+      // Check if this is an orphaned worktree
+      if let orphanInfo = worktreeService.checkIfOrphaned(at: worktree.path),
+         orphanInfo.isOrphaned {
+        worktreeDeletionError = WorktreeDeletionError(
+          worktree: worktree,
+          message: error.localizedDescription,
+          isOrphaned: true,
+          parentRepoPath: orphanInfo.parentRepoPath
+        )
+      } else {
+        worktreeDeletionError = WorktreeDeletionError(
+          worktree: worktree,
+          message: error.localizedDescription
+        )
+      }
+      deletingWorktreePath = nil
+    }
+  }
+
+  /// Deletes an orphaned worktree by pruning and removing the directory
+  /// - Parameters:
+  ///   - worktree: The orphaned worktree to delete
+  ///   - parentRepoPath: Path to the parent git repository
+  public func deleteOrphanedWorktree(_ worktree: WorktreeBranch, parentRepoPath: String) async {
+    deletingWorktreePath = worktree.path
+
+    do {
+      try await worktreeService.removeOrphanedWorktree(at: worktree.path, parentRepoPath: parentRepoPath)
+      deletingWorktreePath = nil
+      clearWorktreeDeletionError()
+      refresh()
+    } catch {
       worktreeDeletionError = WorktreeDeletionError(
         worktree: worktree,
-        message: error.localizedDescription
+        message: "Failed to delete orphaned worktree: \(error.localizedDescription)"
       )
+      deletingWorktreePath = nil
     }
-
-    deletingWorktreePath = nil
   }
 
   /// Clears the worktree deletion error

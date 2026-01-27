@@ -129,26 +129,46 @@ public struct CLISessionsListView: View {
       )
     ) {
       if let error = viewModel.worktreeDeletionError {
-        Button("Try Again") {
-          Task {
-            let worktree = error.worktree
-            viewModel.clearWorktreeDeletionError()
-            await viewModel.deleteWorktree(worktree)
+        if error.isOrphaned, let parentRepoPath = error.parentRepoPath {
+          // Orphaned worktree - offer to prune & delete
+          Button("Prune & Delete") {
+            Task {
+              let worktree = error.worktree
+              await viewModel.deleteOrphanedWorktree(worktree, parentRepoPath: parentRepoPath)
+            }
           }
-        }
-        Button("Open in Terminal") {
-          if let error = viewModel.worktreeDeletionError {
-            _ = viewModel.openTerminalInWorktree(error.worktree)
+          Button("Cancel", role: .cancel) {
             viewModel.clearWorktreeDeletionError()
           }
-        }
-        Button("Cancel", role: .cancel) {
-          viewModel.clearWorktreeDeletionError()
+        } else {
+          // Regular error - offer retry
+          Button("Try Again") {
+            Task {
+              let worktree = error.worktree
+              viewModel.clearWorktreeDeletionError()
+              await viewModel.deleteWorktree(worktree)
+            }
+          }
+          Button("Cancel", role: .cancel) {
+            viewModel.clearWorktreeDeletionError()
+          }
         }
       }
     } message: {
       if let error = viewModel.worktreeDeletionError {
-        Text("Could not delete worktree at:\n\(error.worktree.path)\n\nError: \(error.message)")
+        if error.isOrphaned {
+          Text("""
+            This worktree is orphaned - the directory exists but git no longer tracks it.
+
+            This can happen when worktree metadata is deleted or corrupted.
+
+            "Prune & Delete" will run 'git worktree prune' and remove the directory.
+
+            Path: \(error.worktree.path)
+            """)
+        } else {
+          Text("Could not delete worktree at:\n\(error.worktree.path)\n\nError: \(error.message)")
+        }
       }
     }
   }
