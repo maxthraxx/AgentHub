@@ -158,7 +158,12 @@ public struct CLIWorktreeBranchRow: View {
                 Image(systemName: "trash")
                   .font(.caption)
                   .foregroundColor(.brandSecondary.opacity(0.8))
-                  .padding(.horizontal, 2)
+                  .frame(width: 24, height: 24)
+                  .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                      .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                  )
+                  .contentShape(Rectangle())
               }
               .buttonStyle(.plain)
               .help("Delete worktree")
@@ -170,7 +175,12 @@ public struct CLIWorktreeBranchRow: View {
             Image(systemName: "plus")
               .font(.caption)
               .foregroundColor(.brandSecondary)
-              .padding(.horizontal, 2)
+              .frame(width: 24, height: 24)
+              .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                  .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+              )
+              .contentShape(Rectangle())
           }
           .buttonStyle(.plain)
           .help("Start new Claude session")
