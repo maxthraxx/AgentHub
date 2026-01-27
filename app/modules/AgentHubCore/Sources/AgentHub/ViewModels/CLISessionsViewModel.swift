@@ -48,6 +48,15 @@ public final class CLISessionsViewModel {
     public let id = UUID()
     public let worktree: WorktreeBranch
     public let message: String
+    public let isOrphaned: Bool
+    public let parentRepoPath: String?
+
+    public init(worktree: WorktreeBranch, message: String, isOrphaned: Bool = false, parentRepoPath: String? = nil) {
+      self.worktree = worktree
+      self.message = message
+      self.isOrphaned = isOrphaned
+      self.parentRepoPath = parentRepoPath
+    }
   }
 
   // MARK: - Search State
@@ -560,7 +569,7 @@ public final class CLISessionsViewModel {
   /// Checks if the session file exists in ~/.claude
   private func sessionFileExists(session: CLISession) -> Bool {
     let claudeDataPath = FileManager.default.homeDirectoryForCurrentUser.path + "/.claude"
-    let encodedPath = session.projectPath.replacingOccurrences(of: "/", with: "-")
+    let encodedPath = session.projectPath.claudeProjectPathEncoded
     let sessionFile = "\(claudeDataPath)/projects/\(encodedPath)/\(session.id).jsonl"
     return FileManager.default.fileExists(atPath: sessionFile)
   }
@@ -660,16 +669,48 @@ public final class CLISessionsViewModel {
     do {
       try await worktreeService.removeWorktree(at: worktree.path)
       // [CLISessionsVM] Worktree deleted successfully")
+      deletingWorktreePath = nil
       refresh()
     } catch {
       // [CLISessionsVM] Failed to delete worktree: \(error.localizedDescription)")
+      // Check if this is an orphaned worktree
+      if let orphanInfo = worktreeService.checkIfOrphaned(at: worktree.path),
+         orphanInfo.isOrphaned {
+        worktreeDeletionError = WorktreeDeletionError(
+          worktree: worktree,
+          message: error.localizedDescription,
+          isOrphaned: true,
+          parentRepoPath: orphanInfo.parentRepoPath
+        )
+      } else {
+        worktreeDeletionError = WorktreeDeletionError(
+          worktree: worktree,
+          message: error.localizedDescription
+        )
+      }
+      deletingWorktreePath = nil
+    }
+  }
+
+  /// Deletes an orphaned worktree by pruning and removing the directory
+  /// - Parameters:
+  ///   - worktree: The orphaned worktree to delete
+  ///   - parentRepoPath: Path to the parent git repository
+  public func deleteOrphanedWorktree(_ worktree: WorktreeBranch, parentRepoPath: String) async {
+    deletingWorktreePath = worktree.path
+
+    do {
+      try await worktreeService.removeOrphanedWorktree(at: worktree.path, parentRepoPath: parentRepoPath)
+      deletingWorktreePath = nil
+      clearWorktreeDeletionError()
+      refresh()
+    } catch {
       worktreeDeletionError = WorktreeDeletionError(
         worktree: worktree,
-        message: error.localizedDescription
+        message: "Failed to delete orphaned worktree: \(error.localizedDescription)"
       )
+      deletingWorktreePath = nil
     }
-
-    deletingWorktreePath = nil
   }
 
   /// Clears the worktree deletion error
@@ -840,7 +881,7 @@ public final class CLISessionsViewModel {
     let pending = PendingHubSession(worktree: worktree, initialPrompt: initialPrompt)
     pendingHubSessions.append(pending)
 #if DEBUG
-    let encodedPath = worktree.path.replacingOccurrences(of: "/", with: "-")
+    let encodedPath = worktree.path.claudeProjectPathEncoded
     AppLogger.session.debug(
       "[StartInHub] pendingId=\(pending.id.uuidString, privacy: .public) worktreePath=\(worktree.path, privacy: .public) encodedPath=\(encodedPath, privacy: .public)"
     )
@@ -863,7 +904,7 @@ public final class CLISessionsViewModel {
   @MainActor
   private func watchForNewSession(pending: PendingHubSession, worktree: WorktreeBranch) async {
     let claudeDataPath = FileManager.default.homeDirectoryForCurrentUser.path + "/.claude"
-    let encodedPath = worktree.path.replacingOccurrences(of: "/", with: "-")
+    let encodedPath = worktree.path.claudeProjectPathEncoded
     let projectDir = "\(claudeDataPath)/projects/\(encodedPath)"
 #if DEBUG
     AppLogger.watcher.debug(
@@ -1062,7 +1103,7 @@ public final class CLISessionsViewModel {
           .sessions ?? []
 
         let claudeDataPath = FileManager.default.homeDirectoryForCurrentUser.path + "/.claude"
-        let encodedPath = worktree.path.replacingOccurrences(of: "/", with: "-")
+        let encodedPath = worktree.path.claudeProjectPathEncoded
         let sessionFilePath = "\(claudeDataPath)/projects/\(encodedPath)/\(sessionId).jsonl"
         if currentSessions.isEmpty && FileManager.default.fileExists(atPath: sessionFilePath) {
           // Session file exists but not in history.jsonl yet - create directly
@@ -1121,7 +1162,7 @@ public final class CLISessionsViewModel {
   @MainActor
   private func pollForNewSessionFallback(pending: PendingHubSession, worktree: WorktreeBranch) async {
     let claudeDataPath = FileManager.default.homeDirectoryForCurrentUser.path + "/.claude"
-    let encodedPath = worktree.path.replacingOccurrences(of: "/", with: "-")
+    let encodedPath = worktree.path.claudeProjectPathEncoded
     let projectDir = "\(claudeDataPath)/projects/\(encodedPath)"
 #if DEBUG
     AppLogger.watcher.debug(

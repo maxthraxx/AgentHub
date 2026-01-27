@@ -17,6 +17,7 @@ public actor CLISessionMonitorService {
   // MARK: - Configuration
 
   private let claudeDataPath: String
+  private let metadataStore: SessionMetadataStore?
 
   // MARK: - Publishers
 
@@ -32,8 +33,9 @@ public actor CLISessionMonitorService {
 
   // MARK: - Initialization
 
-  public init(claudeDataPath: String? = nil) {
+  public init(claudeDataPath: String? = nil, metadataStore: SessionMetadataStore? = nil) {
     self.claudeDataPath = claudeDataPath ?? (NSHomeDirectory() + "/.claude")
+    self.metadataStore = metadataStore
   }
 
   // MARK: - Repository Management
@@ -149,7 +151,14 @@ public actor CLISessionMonitorService {
     // Track which sessions have been assigned to prevent duplicates
     var assignedSessionIds: Set<String> = []
 
+    // Fetch all existing repo mappings for sessions we're processing
+    let allSessionIds = Array(sessionEntries.keys)
+    let existingMappings = try? await metadataStore?.getRepoMappings(for: allSessionIds)
+
     for repoIndex in updatedRepositories.indices {
+      // Track the current repository path for this iteration
+      let currentRepoPath = updatedRepositories[repoIndex].path
+
       for worktreeIndex in updatedRepositories[repoIndex].worktrees.indices {
         let worktreePath = updatedRepositories[repoIndex].worktrees[worktreeIndex].path
         let worktreeBranch = updatedRepositories[repoIndex].worktrees[worktreeIndex].name
@@ -172,8 +181,40 @@ public actor CLISessionMonitorService {
             // This is definitively the correct worktree - use this session
             let metadata = sessionMetadata[sessionId]
 
+            // Check repo mapping first - prevents collision when different repos reuse the same path
+            if let mapping = existingMappings?[sessionId] {
+              // Session has existing mapping - verify parent repo matches
+              guard mapping.parentRepoPath == currentRepoPath else {
+                // Session belongs to different repo, skip
+                continue
+              }
+            }
+
+            // Verify branch matches to prevent session collision across repositories
+            // When a worktree path is reused by a different repository, branch names will differ
+            let branchMatches: Bool
+            if let sessionBranch = metadata?.branch {
+              branchMatches = sessionBranch == worktreeBranch
+            } else {
+              // No branch info - only assign to non-worktree entries (main repo)
+              branchMatches = !isWorktreeEntry
+            }
+
+            // Skip if branch doesn't match - session belongs to a different repo
+            guard branchMatches else { continue }
+
+            // If no mapping exists, create one for this session
+            if existingMappings?[sessionId] == nil {
+              let mapping = SessionRepoMapping(
+                sessionId: sessionId,
+                parentRepoPath: currentRepoPath,
+                worktreePath: worktreePath
+              )
+              try? await metadataStore?.setRepoMapping(mapping)
+            }
+
             // Check if session is active
-            let encodedPath = firstEntry.project.replacingOccurrences(of: "/", with: "-")
+            let encodedPath = firstEntry.project.claudeProjectPathEncoded
             let sessionFilePath = "\(claudeDataPath)/projects/\(encodedPath)/\(sessionId).jsonl"
             var isActive = false
             if let attrs = try? FileManager.default.attributesOfItem(atPath: sessionFilePath),
@@ -214,6 +255,15 @@ public actor CLISessionMonitorService {
           // Get session's metadata from session file
           let metadata = sessionMetadata[sessionId]
 
+          // Check repo mapping first - prevents collision when different repos reuse the same path
+          if let mapping = existingMappings?[sessionId] {
+            // Session has existing mapping - verify parent repo matches
+            guard mapping.parentRepoPath == currentRepoPath else {
+              // Session belongs to different repo, skip
+              continue
+            }
+          }
+
           // Match by branch name as fallback
           let branchMatches: Bool
           if let sessionBranch = metadata?.branch {
@@ -227,9 +277,19 @@ public actor CLISessionMonitorService {
 
           guard branchMatches else { continue }
 
+          // If no mapping exists, create one for this session
+          if existingMappings?[sessionId] == nil {
+            let mapping = SessionRepoMapping(
+              sessionId: sessionId,
+              parentRepoPath: currentRepoPath,
+              worktreePath: worktreePath
+            )
+            try? await metadataStore?.setRepoMapping(mapping)
+          }
+
           // Check if session is active by looking at session file modification time
           // A session is active if its .jsonl file was modified in the last 60 seconds
-          let encodedPath = firstEntry.project.replacingOccurrences(of: "/", with: "-")
+          let encodedPath = firstEntry.project.claudeProjectPathEncoded
           let sessionFilePath = "\(claudeDataPath)/projects/\(encodedPath)/\(sessionId).jsonl"
           var isActive = false
           if let attrs = try? FileManager.default.attributesOfItem(atPath: sessionFilePath),
@@ -352,7 +412,7 @@ public actor CLISessionMonitorService {
       var filesToRead: [(sessionId: String, filePath: String)] = []
       for (sessionId, entries) in sessionEntries {
         guard let firstEntry = entries.first else { continue }
-        let encodedPath = firstEntry.project.replacingOccurrences(of: "/", with: "-")
+        let encodedPath = firstEntry.project.claudeProjectPathEncoded
         let filePath = "\(claudePath)/projects/\(encodedPath)/\(sessionId).jsonl"
         filesToRead.append((sessionId, filePath))
       }

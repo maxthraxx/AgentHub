@@ -524,4 +524,57 @@ public actor GitWorktreeService {
     let gitRoot = try await findGitRoot(at: worktreePath)
     try await runGitCommand(["worktree", "remove", worktreePath, "--force"], at: gitRoot)
   }
+
+  // MARK: - Orphaned Worktree Handling
+
+  /// Checks if a worktree is orphaned (directory exists but git doesn't recognize it)
+  /// - Parameter worktreePath: Path to check
+  /// - Returns: Tuple of (isOrphaned, parentRepoPath) if orphaned, nil otherwise
+  public nonisolated func checkIfOrphaned(at worktreePath: String) -> (isOrphaned: Bool, parentRepoPath: String?)? {
+    let gitFile = (worktreePath as NSString).appendingPathComponent(".git")
+
+    // Must have .git file (not directory) to be a worktree
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: gitFile, isDirectory: &isDirectory),
+          !isDirectory.boolValue else {
+      return nil
+    }
+
+    // Parse the .git file to get parent repo path
+    guard let contents = try? String(contentsOfFile: gitFile, encoding: .utf8),
+          let gitdirLine = contents.components(separatedBy: .newlines).first(where: { $0.hasPrefix("gitdir:") }) else {
+      return nil
+    }
+
+    let gitdirPath = gitdirLine
+      .replacingOccurrences(of: "gitdir:", with: "")
+      .trimmingCharacters(in: .whitespaces)
+
+    // Extract parent repo path: /repo/.git/worktrees/name -> /repo
+    if let range = gitdirPath.range(of: "/.git/worktrees/") {
+      let parentRepoPath = String(gitdirPath[..<range.lowerBound])
+
+      // Check if the worktree metadata exists
+      let metadataExists = FileManager.default.fileExists(atPath: gitdirPath)
+
+      return (isOrphaned: !metadataExists, parentRepoPath: parentRepoPath)
+    }
+
+    return nil
+  }
+
+  /// Removes an orphaned worktree by pruning stale references and deleting the directory
+  /// - Parameters:
+  ///   - worktreePath: Path to the orphaned worktree directory
+  ///   - parentRepoPath: Path to the parent git repository
+  public func removeOrphanedWorktree(at worktreePath: String, parentRepoPath: String) async throws {
+    // First, prune stale worktree references in the parent repo
+    try await runGitCommand(["worktree", "prune"], at: parentRepoPath)
+
+    // Then delete the orphaned directory
+    guard FileManager.default.fileExists(atPath: worktreePath) else {
+      return // Already deleted
+    }
+    try FileManager.default.removeItem(atPath: worktreePath)
+  }
 }
