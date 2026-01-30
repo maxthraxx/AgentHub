@@ -114,14 +114,66 @@ public final class CLISessionsViewModel {
   ///   with the terminal's input buffer (see `EmbeddedTerminalView.sendPromptIfNeeded`).
   public var pendingTerminalPrompts: [String: String] = [:]
 
-  /// Updates the terminal view state for a session
+  /// Updates the terminal view state for a session.
+  /// When switching to terminal mode, stops polling to improve performance.
+  /// When switching to monitor/list mode, starts polling at 1.5s interval.
   public func setTerminalView(for sessionId: String, show: Bool) {
+    let mode = show ? "TERMINAL" : "MONITOR"
+    AppLogger.session.info("[Polling] setTerminalView -> \(mode, privacy: .public) for session: \(sessionId.prefix(8), privacy: .public)")
+
     if show {
+      // Switching TO terminal mode - stop polling
       sessionsWithTerminalView.insert(sessionId)
+      stopPolling(sessionId: sessionId)
     } else {
+      // Switching TO monitor/list mode - start polling
       sessionsWithTerminalView.remove(sessionId)
+      if let session = monitoredSessionBackup[sessionId] {
+        startPolling(session: session)
+      }
     }
     persistSessionsWithTerminalView()
+  }
+
+  /// Start polling for a session (when switching to monitor mode)
+  private func startPolling(session: CLISession) {
+    AppLogger.session.info("[Polling] startPolling called for session: \(session.id.prefix(8), privacy: .public)")
+
+    guard monitoringCancellables[session.id] == nil else {
+      AppLogger.session.info("[Polling] Already polling session: \(session.id.prefix(8), privacy: .public)")
+      return
+    }
+
+    // Subscribe to state updates
+    let cancellable = fileWatcher.statePublisher
+      .filter { $0.sessionId == session.id }
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] update in
+        self?.monitorStates[session.id] = update.state
+      }
+
+    monitoringCancellables[session.id] = cancellable
+
+    Task {
+      await fileWatcher.startMonitoring(
+        sessionId: session.id,
+        projectPath: session.projectPath
+      )
+    }
+    AppLogger.session.info("[Polling] Started polling for session: \(session.id.prefix(8), privacy: .public)")
+  }
+
+  /// Stop polling for a session (when switching to terminal mode)
+  private func stopPolling(sessionId: String) {
+    AppLogger.session.info("[Polling] stopPolling called for session: \(sessionId.prefix(8), privacy: .public)")
+
+    monitoringCancellables.removeValue(forKey: sessionId)
+    monitorStates.removeValue(forKey: sessionId)
+
+    Task {
+      await fileWatcher.stopMonitoring(sessionId: sessionId)
+    }
+    AppLogger.session.info("[Polling] Stopped polling for session: \(sessionId.prefix(8), privacy: .public)")
   }
 
   /// Shows terminal view for a session with an initial prompt (for inline edit requests).
@@ -509,15 +561,21 @@ public final class CLISessionsViewModel {
       }
     }
 
-    // Restore terminal view state
+    // Restore terminal view state and start polling for sessions in monitor/list mode.
+    // After startMonitoring, all sessions default to terminal view (no polling).
+    // We need to switch sessions that were in monitor/list mode back to that mode with polling.
     if let data = UserDefaults.standard.data(forKey: AgentHubDefaults.sessionsWithTerminalView),
-       let sessionIds = try? JSONDecoder().decode([String].self, from: data) {
-      // [CLISessionsVM] Found \(sessionIds.count) persisted sessions with terminal view")
+       let persistedTerminalSessionIds = try? JSONDecoder().decode([String].self, from: data) {
+      let persistedSet = Set(persistedTerminalSessionIds)
 
-      for sessionId in sessionIds {
-        // Only restore terminal view for sessions that are actually monitored
-        if monitoredSessionIds.contains(sessionId) {
-          sessionsWithTerminalView.insert(sessionId)
+      // Find sessions that are monitored but were NOT in terminal view (were in monitor/list mode)
+      for sessionId in monitoredSessionIds {
+        if !persistedSet.contains(sessionId) {
+          // This session was in monitor/list mode - switch it back and start polling
+          sessionsWithTerminalView.remove(sessionId)
+          if let session = monitoredSessionBackup[sessionId] {
+            startPolling(session: session)
+          }
         }
       }
     }
@@ -1250,31 +1308,21 @@ public final class CLISessionsViewModel {
     }
   }
 
-  /// Start monitoring a session
+  /// Start monitoring a session.
+  /// Defaults to terminal view mode (no polling).
+  /// Polling will start when user switches to monitor/list mode.
   public func startMonitoring(session: CLISession) {
     guard !monitoredSessionIds.contains(session.id) else { return }
 
     monitoredSessionIds.insert(session.id)
     monitoredSessionBackup[session.id] = session
+    sessionsWithTerminalView.insert(session.id)  // Default to terminal view
+
     persistMonitoredSessions()
+    persistSessionsWithTerminalView()
 
-    // Subscribe to state updates
-    let cancellable = fileWatcher.statePublisher
-      .filter { $0.sessionId == session.id }
-      .receive(on: DispatchQueue.main)
-      .sink { [weak self] update in
-        self?.monitorStates[session.id] = update.state
-      }
-
-    monitoringCancellables[session.id] = cancellable
-
-    // Start watching
-    Task {
-      await fileWatcher.startMonitoring(
-        sessionId: session.id,
-        projectPath: session.projectPath
-      )
-    }
+    // Don't start polling - terminal mode is the default.
+    // Polling will start when user switches to monitor/list mode via setTerminalView.
   }
 
   /// Stop monitoring a session

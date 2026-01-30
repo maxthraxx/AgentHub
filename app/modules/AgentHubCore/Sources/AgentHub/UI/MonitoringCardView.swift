@@ -135,8 +135,8 @@ public struct MonitoringCardView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
 
-      // Context bar (if available)
-      if let state = state, state.inputTokens > 0 {
+      // Context bar (only in monitor/list mode, not terminal mode)
+      if !showTerminal, let state = state, state.inputTokens > 0 {
         Divider()
 
         ContextWindowBar(
@@ -387,20 +387,22 @@ public struct MonitoringCardView: View {
       // Terminal/List segmented control (hidden when maximized)
       if !isMaximized {
         HStack(spacing: 4) {
-          Button(action: { withAnimation(.easeInOut(duration: 0.2)) { onToggleTerminal(false) } }) {
-            Image(systemName: "list.bullet")
-              .font(.caption)
-              .frame(width: 28, height: 22)
-              .foregroundColor(!showTerminal ? .brandPrimary : .secondary)
-              .contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-
+          // Terminal button (left - default)
           Button(action: { withAnimation(.easeInOut(duration: 0.2)) { onToggleTerminal(true) } }) {
             Image(systemName: "terminal")
               .font(.caption)
               .frame(width: 28, height: 22)
               .foregroundColor(showTerminal ? .brandPrimary : .secondary)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+
+          // List/Monitor button (right)
+          Button(action: { withAnimation(.easeInOut(duration: 0.2)) { onToggleTerminal(false) } }) {
+            Image(systemName: "list.bullet")
+              .font(.caption)
+              .frame(width: 28, height: 22)
+              .foregroundColor(!showTerminal ? .brandPrimary : .secondary)
               .contentShape(Rectangle())
           }
           .buttonStyle(.plain)

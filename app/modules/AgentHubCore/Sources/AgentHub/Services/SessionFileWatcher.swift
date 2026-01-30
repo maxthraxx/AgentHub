@@ -59,8 +59,11 @@ public actor SessionFileWatcher {
 
   /// Start monitoring a session
   public func startMonitoring(sessionId: String, projectPath: String) {
+    AppLogger.watcher.info("[Polling] START monitoring session: \(sessionId.prefix(8), privacy: .public)")
+
     // If already monitoring, just re-emit current state
     if let existingInfo = watchedSessions[sessionId] {
+      AppLogger.watcher.info("[Polling] Session already monitored, re-emitting state: \(sessionId.prefix(8), privacy: .public)")
       let state = buildMonitorState(from: existingInfo.parseResult)
       stateSubject.send(StateUpdate(sessionId: sessionId, state: state))
       return
@@ -69,7 +72,7 @@ public actor SessionFileWatcher {
     // Find session file
     let sessionFilePath = findSessionFile(sessionId: sessionId, projectPath: projectPath)
     guard let filePath = sessionFilePath else {
-      AppLogger.watcher.error("Could not find session file for: \(sessionId)")
+      AppLogger.watcher.error("[Polling] Could not find session file for: \(sessionId)")
       return
     }
 
@@ -140,15 +143,17 @@ public actor SessionFileWatcher {
 
     source.resume()
 
-    // Set up status timer to re-evaluate timeout-based status every second
+    // Set up status timer to re-evaluate timeout-based status every 1.5 seconds
     // Only emits updates when status actually changes
     let statusTimer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
-    statusTimer.schedule(deadline: .now() + 1, repeating: 1.0)
+    statusTimer.schedule(deadline: .now() + 1.5, repeating: 1.5)
 
     statusTimer.setEventHandler { [weak self] in
       guard let self = self else { return }
 
       self.processingQueue.async {
+        AppLogger.watcher.debug("[Polling] TICK (1.5s) for session: \(sessionId.prefix(8), privacy: .public)")
+
         // Health check: detect stale file watcher
         let timeSinceLastEvent = Date().timeIntervalSince(lastFileEventTime)
         let currentFileSize = self.getFileSize(filePath)
@@ -222,13 +227,16 @@ public actor SessionFileWatcher {
 
   /// Stop monitoring a session
   public func stopMonitoring(sessionId: String) {
+    AppLogger.watcher.info("[Polling] STOP monitoring session: \(sessionId.prefix(8), privacy: .public)")
 
     guard let info = watchedSessions.removeValue(forKey: sessionId) else {
+      AppLogger.watcher.info("[Polling] Session was not being monitored: \(sessionId.prefix(8), privacy: .public)")
       return
     }
 
     info.source.cancel()
     info.statusTimer.cancel()
+    AppLogger.watcher.info("[Polling] Cancelled file watcher and timer for: \(sessionId.prefix(8), privacy: .public)")
   }
 
   /// Get current state for a session
