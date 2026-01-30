@@ -16,6 +16,10 @@ https://github.com/user-attachments/assets/98a3b15d-dd74-4c77-b0d6-7d3edbc18812
 - **Full-screen terminal mode** — Maximize sessions for distraction-free focus
 - **Codex support** - Coming soon
 
+**New**, Inline human code reviews
+
+https://github.com/user-attachments/assets/e27b45c6-04dc-4154-a0ae-f1f1a6a28be7
+
 ## Requirements
 
 - macOS 14.0+
