@@ -135,7 +135,7 @@ public struct CreateWorktreeSheet: View {
       TextField("feature/my-feature", text: $branchName)
         .textFieldStyle(.roundedBorder)
         .onChange(of: branchName) { _, newValue in
-          directoryName = GitWorktreeService.sanitizeBranchName(newValue)
+          directoryName = GitWorktreeService.worktreeDirectoryName(for: newValue, repoName: repositoryName)
         }
 
       Text("A new branch will be created with this name")

@@ -111,11 +111,12 @@ public final class WorktreeOrchestrationService {
     // Capture callback for use in Sendable closure
     let progressCallback = onWorktreeProgress
 
-    // Create worktree with the session's branch name
+    // Create worktree with the session's branch name, prefixed with repo name
+    let repoName = URL(fileURLWithPath: modulePath).lastPathComponent
     let worktreePath = try await gitService.createWorktreeWithNewBranch(
       at: modulePath,
       newBranchName: session.branchName,
-      directoryName: session.branchName,
+      directoryName: GitWorktreeService.worktreeDirectoryName(for: session.branchName, repoName: repoName),
       startPoint: nil
     ) { progress in
       // Forward detailed progress to callback on MainActor
