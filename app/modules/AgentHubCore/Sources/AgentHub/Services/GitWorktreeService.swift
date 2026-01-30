@@ -287,6 +287,16 @@ public actor GitWorktreeService {
       .replacingOccurrences(of: "\\", with: "-")
   }
 
+  /// Creates a worktree directory name prefixed with the repository name
+  /// - Parameters:
+  ///   - branch: Branch name (e.g., "origin/feature/auth")
+  ///   - repoName: Repository name (e.g., "apps")
+  /// - Returns: Directory name (e.g., "apps-feature-auth")
+  public static func worktreeDirectoryName(for branch: String, repoName: String) -> String {
+    let sanitized = sanitizeBranchName(branch)
+    return "\(repoName)-\(sanitized)"
+  }
+
   // MARK: - Git Command Runner
 
   @discardableResult
